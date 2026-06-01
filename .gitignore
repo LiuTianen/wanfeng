@@ -1,0 +1,19 @@
+# Python
+server/venv/
+__pycache__/
+*.pyc
+
+# 运行时文件
+*.db
+.apikey
+
+# 上传图片
+uploads/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

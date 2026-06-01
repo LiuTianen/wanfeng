@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="晚风">
+  <title>晚风 · 图文日记</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231a1a1a'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='serif' fill='%23c9a96e'>风</text></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #141414; --surface: #1e1e1e; --surface-hover: #262626; --border: #2a2a2a;
+      --text: #d4d4d4; --text-muted: #777; --accent: #c9a96e; --accent-dim: #3d3426;
+      --danger: #6e3a3a; --radius: 12px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+    }
+    html, body {
+      height: 100dvh; height: 100vh; background: var(--bg); color: var(--text);
+      font-family: var(--font); font-size: 15px; line-height: 1.7;
+      -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; position: relative;
+    }
+    body { overflow: hidden; }
+
+    /* ── Header ── */
+    header {
+      flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+      padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 12px;
+      border-bottom: 1px solid var(--border); background: var(--bg);
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-family: var(--serif); font-size: 22px; font-weight: 400; color: var(--accent); letter-spacing: 2px; }
+    header .count { font-size: 12px; color: var(--text-muted); flex: 1; text-align: center; }
+    .header-btns { display: flex; gap: 8px; align-items: center; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
+    .status-dot.online { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    .status-dot.offline { background: #ff9800; }
+    .status-dot.local { background: var(--text-muted); }
+    .status-dot.unauth { background: #f44336; }
+    #btn-cal { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; }
+    #btn-cal:hover, #btn-cal.active { border-color: var(--accent); color: var(--accent); }
+    #btn-add { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--accent); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; }
+    #btn-add:hover { background: var(--surface-hover); border-color: var(--accent); }
+    #btn-settings { background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px; }
+
+    /* ── Search ── */
+    .search-wrap { flex-shrink: 0; padding: 12px 20px 0; }
+    #search { width: 100%; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 14px; font-family: var(--font); outline: none; transition: border-color .25s; }
+    #search::placeholder { color: var(--text-muted); }
+    #search:focus { border-color: var(--accent); }
+
+    /* ── Group Filter Bar ── */
+    .group-bar {
+      flex-shrink: 0; display: flex; gap: 8px; padding: 8px 20px 12px;
+      overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .group-bar::-webkit-scrollbar { display: none; }
+    .group-chip {
+      flex-shrink: 0; padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text-muted); font-size: 12px; font-family: var(--font);
+      cursor: pointer; white-space: nowrap; transition: all .2s; user-select: none;
+    }
+    .group-chip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .group-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; background: var(--accent-dim); color: var(--accent); font-size: 11px; margin-bottom: 8px; }
+
+    /* ── Note List ── */
+    #list {
+      flex: 1; overflow-y: auto; padding: 16px 20px 80px;
+      padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    #list::-webkit-scrollbar { width: 4px; }
+    #list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); gap: 12px; user-select: none; }
+    .empty-state .icon { font-size: 48px; opacity: .4; }
+    .empty-state .hint { font-size: 13px; letter-spacing: 1px; }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; transition: all .2s; animation: fadeUp .3s ease both; }
+    .card:hover { border-color: var(--accent-dim); background: var(--surface-hover); }
+    .card .meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .card .time { font-size: 11px; color: var(--text-muted); letter-spacing: .5px; }
+    .card .actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+    .card:hover .actions { opacity: 1; }
+    .card .actions button { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
+    .card .actions button:hover { color: var(--accent); }
+    .card .actions button.del:hover { color: #d47272; }
+    .card .body { color: var(--text); font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: hidden; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
+    .card .body.expanded { max-height: none; mask-image: none; -webkit-mask-image: none; }
+    .card .body.short { max-height: none; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .card-tag { padding: 1px 8px; border-radius: 8px; background: rgba(201,169,110,.12); color: var(--accent); font-size: 10px; }
+    /* image thumbnails in card */
+    .card-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .card-images img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: all .2s; }
+    .card-images img:hover { border-color: var(--accent); transform: scale(1.03); }
+    .card .expand-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; cursor: pointer; }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Calendar View ── */
+    #calendar-view { display: none; flex: 1; overflow-y: auto; padding: 16px 20px 80px; flex-direction: column; gap: 16px; }
+    #calendar-view.active { display: flex; }
+    #list.hidden { display: none; }
+    .cal-header { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+    .cal-header .month-label { font-family: var(--serif); font-size: 18px; color: var(--accent); }
+    .cal-header button { background: none; border: 1px solid var(--border); color: var(--text-muted); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+    .cal-header button:hover { border-color: var(--accent); color: var(--accent); }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+    .cal-day-label { font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+    .cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; border: 1px solid transparent; transition: all .15s; position: relative; }
+    .cal-day:hover { background: var(--surface-hover); border-color: var(--border); }
+    .cal-day.today { border-color: var(--accent); }
+    .cal-day.has-note { font-weight: 600; }
+    .cal-day.has-note::after { content: ''; position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+    .cal-day.selected { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .cal-day.other-month { color: var(--border); }
+    .cal-notes-title { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+    .cal-notes-list { display: flex; flex-direction: column; gap: 8px; }
+
+    /* ── Editor Modal ── */
+    .overlay {
+      position: absolute; top: 0; left: 0; right: 0; min-height: 100%;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      z-index: 100; display: flex; align-items: flex-start; justify-content: center;
+      padding: calc(60px + env(safe-area-inset-top, 0px)) 0 20px; animation: fadeIn .2s ease; overflow-y: auto;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .editor {
+      background: var(--surface); width: 100%; max-width: 560px; border-radius: var(--radius);
+      padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 14px;
+      animation: fadeUp .25s ease; box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    }
+    .editor textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.8;
+      padding: 14px 16px; resize: none; outline: none; transition: border-color .2s;
+    }
+    .editor textarea:focus { border-color: var(--accent); }
+    .editor textarea#note-body { flex: 1 1 auto; min-height: 140px; }
+    .editor .group-input-row, .editor .tag-input-row { display: flex; align-items: center; gap: 8px; }
+    .editor .group-input-row label, .editor .tag-input-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .editor .group-input-row input, .editor .tag-input-row input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: 13px; font-family: var(--font); padding: 8px 12px; outline: none;
+    }
+    .editor .group-input-row input:focus, .editor .tag-input-row input:focus { border-color: var(--accent); }
+    .group-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; max-height: 160px; overflow-y: auto; z-index: 10; display: none; margin-top: 2px;
+    }
+    .group-dropdown.show { display: block; }
+    .group-dropdown-item { padding: 8px 14px; font-size: 13px; color: var(--text); cursor: pointer; }
+    .group-dropdown-item:hover { background: var(--surface-hover); color: var(--accent); }
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px;
+      background: var(--accent-dim); color: var(--accent); font-size: 11px; cursor: default;
+    }
+    .tag-chip .tag-x { cursor: pointer; font-weight: bold; font-size: 13px; opacity: .7; }
+    .tag-chip .tag-x:hover { opacity: 1; color: #d47272; }
+    .editor .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn { padding: 10px 22px; border-radius: 10px; border: 1px solid var(--border); font-size: 14px; font-family: var(--font); cursor: pointer; transition: all .2s; }
+    .btn-ghost { background: transparent; color: var(--text-muted); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+    .btn-save { background: var(--accent); color: #141414; border-color: var(--accent); font-weight: 600; }
+    .btn-save:hover { opacity: .85; }
+
+    /* ── Image Upload ── */
+    .img-upload-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .img-upload-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .btn-img-upload {
+      padding: 8px 16px; border-radius: 8px; border: 1px dashed var(--border);
+      background: var(--bg); color: var(--text-muted); font-size: 12px; cursor: pointer;
+      transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-img-upload:hover { border-color: var(--accent); color: var(--accent); }
+    .img-preview-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .img-preview-item { position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .img-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+    .img-preview-item .img-remove {
+      position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(0,0,0,.7); color: #d47272; font-size: 14px; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
+    .img-upload-progress { font-size: 11px; color: var(--accent); }
+
+    /* ── Image Lightbox ── */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,.9);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; animation: fadeIn .2s ease;
+    }
+    .lightbox img { max-width: 95vw; max-height: 90vh; object-fit: contain; border-radius: 6px; }
+
+    .toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #141414; padding: 10px 24px; border-radius: 20px;
+      font-size: 13px; font-weight: 600; z-index: 200; pointer-events: none;
+      animation: toastIn .3s ease, toastOut .3s ease 1.5s forwards;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
+    @keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+
+    /* ── Bottom Bar ── */
+    .bottom-bar {
+      flex-shrink: 0; display: flex; gap: 16px; justify-content: center;
+      padding: 8px 20px calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--bg);
+    }
+    .bottom-bar button { background: none; border: none; color: var(--text-muted); font-size: 12px; font-family: var(--font); cursor: pointer; letter-spacing: .5px; transition: color .2s; }
+    .bottom-bar button:hover { color: var(--accent); }
+    #import-file { display: none; }
+
+    @media (min-width: 600px) {
+      #list {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 340px));
+        justify-content: center; align-items: start; gap: 14px; padding: 20px 24px 40px;
+      }
+      .card .body { max-height: 140px; }
+      .empty-state { grid-column: 1 / -1; min-height: 50vh; }
+      .card-images img { width: 100px; height: 100px; }
+      #calendar-view { padding: 20px 24px 40px; }
+    }
+    @media (min-width: 900px) {
+      #list { grid-template-columns: repeat(auto-fill, minmax(240px, 360px)); padding: 24px 32px 48px; gap: 16px; }
+      #calendar-view { padding: 24px 32px 48px; max-width: 700px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>晚 风</h1>
+  <span id="status-dot" class="status-dot local" title="本地模式"></span>
+  <span class="count" id="count">0 条</span>
+  <div class="header-btns">
+    <button id="btn-cal" title="日历视图">📅</button>
+    <button id="btn-settings" title="设置">⚙</button>
+    <button id="btn-add" title="新建笔记">+</button>
+  </div>
+</header>
+
+<div class="search-wrap"><input type="text" id="search" placeholder="翻一翻旧时光…"></div>
+<div class="group-bar" id="group-bar"></div>
+<div id="list"></div>
+<div id="calendar-view">
+  <div class="cal-header"></div>
+  <div class="cal-grid cal-day-labels"></div>
+  <div class="cal-grid cal-days"></div>
+  <div class="cal-notes-title"></div>
+  <div class="cal-notes-list"></div>
+</div>
+
+<div class="bottom-bar">
+  <button id="btn-export">导出</button>
+  <button id="btn-import">导入</button>
+  <input type="file" id="import-file" accept=".json">
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//  晚风 · 图文日记 PWA
+//  v2 — 图片上传 + 日历视图
+//═════════════════════════════════════════
+
+const STORAGE_KEY = 'wanfeng_notes';
+const API_KEY_STORAGE = 'wanfeng_apikey';
+const API_BASE = '/api';
+
+let notes = [];
+let editId = null;
+let apiKey = null;
+let activeGroup = '';
+let groups = [];
+let allTags = [];
+let activeTag = '';
+let showCalendar = false;
+let calYear, calMonth, calSelectedDate;
+
+function getApiKey() {
+  if (apiKey) return apiKey;
+  apiKey = localStorage.getItem(API_KEY_STORAGE) || '';
+  return apiKey;
+}
+
+async function apiFetch(path, opts = {}) {
+  const key = getApiKey();
+  const headers = { ...(opts.headers || {}) };
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  // Don't set Content-Type for FormData (upload)
+  if (!(opts.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (res.status === 401) { apiKey = null; localStorage.removeItem(API_KEY_STORAGE); throw new Error('unauthorized'); }
+  if (!res.ok) throw new Error('API error: ' + res.status);
+  return res.json();
+}
+
+/* ── 加载笔记 ── */
+async function load() {
+  try { notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); notes.sort((a,b) => b.ts - a.ts); } catch { notes = []; }
+  render();
+  updateStatus();
+  const key = getApiKey(); if (!key) return;
+  try {
+    const data = await apiFetch('/notes');
+    notes = mergeNotes(data.notes || [], notes);
+    saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
+  } catch (e) {
+    if (e.message === 'unauthorized') updateStatus('unauth'); else updateStatus('offline');
+  }
+}
+
+function mergeNotes(serverNotes, localNotes) {
+  const map = new Map();
+  for (const n of localNotes) map.set(n.id, n);
+  for (const n of serverNotes) map.set(n.id, {
+    id: n.id, body: n.body, group: n.group || '', tags: safeTags(n.tags),
+    images: n.images || [], ts: n.ts || Date.now()
+  });
+  return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
+}
+
+function safeTags(t) {
+  if (Array.isArray(t)) return t;
+  if (typeof t === 'string') { try { const p = JSON.parse(t); if (Array.isArray(p)) return p; } catch {} }
+  return [];
+}
+
+function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }
+
+/* ── 分组 & 标签 ── */
+async function fetchGroups() {
+  try { const data = await apiFetch('/groups'); groups = data.groups || []; } catch { groups = []; }
+  renderGroupBar();
+}
+async function fetchTags() {
+  try { const data = await apiFetch('/tags'); allTags = data.tags || []; } catch { allTags = []; }
+  renderGroupBar();
+}
+
+function renderGroupBar() {
+  const bar = document.getElementById('group-bar');
+  const allCount = notes.length;
+  const noGroupCount = notes.filter(n => !n.group).length;
+  let html = `<span class="group-chip${!activeGroup && !activeTag ? ' active' : ''}" data-type="group" data-group="">全部 <span style="color:var(--text-muted)">${allCount}</span></span>`;
+  if (noGroupCount > 0) html += `<span class="group-chip${activeGroup === '!' ? ' active' : ''}" data-type="group" data-group="!">未分组 <span style="color:var(--text-muted)">${noGroupCount}</span></span>`;
+  for (const g of groups) html += `<span class="group-chip${activeGroup === g.name ? ' active' : ''}" data-type="group" data-group="${esc(g.name)}">📁 ${esc(g.name)} <span style="color:var(--text-muted)">${g.count}</span></span>`;
+  if (allTags.length > 0) {
+    html += '<span style="color:var(--border);margin:0 2px;font-size:12px;line-height:28px">│</span>';
+    for (const t of allTags) html += `<span class="group-chip${activeTag === t.name ? ' active' : ''}" data-type="tag" data-tag="${esc(t.name)}">🏷 ${esc(t.name)} <span style="color:var(--text-muted)">${t.count}</span></span>`;
+  }
+  bar.innerHTML = html;
+  bar.querySelectorAll('.group-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      if (chip.dataset.type === 'tag') { activeTag = chip.dataset.tag; activeGroup = ''; }
+      else { activeGroup = chip.dataset.group; activeTag = ''; }
+      renderGroupBar(); render(searchEl.value);
+    });
+  });
+}
+
+/* ── 服务端操作 ── */
+async function saveToServer(note) {
+  if (!getApiKey()) return null;
+  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+}
+async function updateOnServer(note) {
+  if (!getApiKey()) return null;
+  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+}
+async function deleteOnServer(id) {
+  if (!getApiKey()) return null;
+  try { return await apiFetch('/notes/' + id, { method: 'DELETE' }); } catch { return null; }
+}
+
+/* ── 图片上传 ── */
+async function uploadImage(file) {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const key = getApiKey();
+    const res = await fetch(API_BASE + '/upload', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + key }, body: form
+    });
+    if (res.ok) return await res.json();
+  } catch(e) { console.error('upload failed', e); }
+  return null;
+}
+
+/* ── 状态 ── */
+function updateStatus(s) {
+  const el = document.getElementById('status-dot');
+  if (!el) return;
+  el.className = 'status-dot ' + (s || 'local');
+  el.title = { online: '已连接服务器', offline: '离线', local: '本地模式', unauth: '未配置密钥' }[s || 'local'] || '';
+}
+
+/* ── 渲染列表 ── */
+const listEl = document.getElementById('list');
+const searchEl = document.getElementById('search');
+const countEl = document.getElementById('count');
+const calView = document.getElementById('calendar-view');
+
+function render(filter = '') {
+  if (showCalendar) { renderCalendar(); return; }
+  calView.classList.remove('active');
+  listEl.classList.remove('hidden');
+
+  const q = filter.trim().toLowerCase();
+  let filtered = notes;
+  if (activeGroup === '!') filtered = filtered.filter(n => !n.group);
+  else if (activeGroup) filtered = filtered.filter(n => n.group === activeGroup);
+  if (activeTag) filtered = filtered.filter(n => safeTags(n.tags).includes(activeTag));
+  if (q) filtered = filtered.filter(n => n.body.toLowerCase().includes(q));
+
+  renderGroupBar();
+  countEl.textContent = notes.length + ' 条';
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = notes.length === 0
+      ? `<div class="empty-state"><span class="icon">🍃</span><span class="hint">万物藏于心</span></div>`
+      : `<div class="empty-state"><span class="hint">没有找到匹配的笔记</span></div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(n => {
+    const date = new Date(n.ts);
+    const timeStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
+    const isLong = n.body.length > 200;
+    const imgs = n.images || [];
+    const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
+    return `<div class="card" data-id="${n.id}">
+        <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
+        <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${esc(n.body)}</div>
+        ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
+        ${imgHtml}
+        ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
+      </div>`;
+  }).join('');
+
+  // event bindings
+  listEl.querySelectorAll('.card').forEach(card => card.addEventListener('click', e => {
+    if (e.target.closest('button') || e.target.closest('img')) return;
+    const bodyEl = card.querySelector('.body');
+    const hintEl = card.querySelector('.expand-hint');
+    if (bodyEl.classList.contains('expanded')) { bodyEl.classList.remove('expanded'); if (hintEl) hintEl.textContent = '点击展开全文…'; }
+    else { bodyEl.classList.add('expanded'); if (hintEl) hintEl.textContent = '收起'; }
+  }));
+  listEl.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openEditor(btn.dataset.id); }));
+  listEl.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); deleteNote(btn.dataset.id); }));
+  listEl.querySelectorAll('.expand-hint').forEach(hint => hint.addEventListener('click', e => {
+    e.stopPropagation();
+    const card = listEl.querySelector(`.card[data-id="${hint.dataset.id}"]`);
+    if (!card) return;
+    const bodyEl = card.querySelector('.body');
+    if (bodyEl.classList.contains('expanded')) { bodyEl.classList.remove('expanded'); hint.textContent = '点击展开全文…'; }
+    else { bodyEl.classList.add('expanded'); hint.textContent = '收起'; }
+  }));
+  // image lightbox
+  listEl.querySelectorAll('.card-images img').forEach(img => img.addEventListener('click', e => {
+    e.stopPropagation();
+    openLightbox(img.dataset.img);
+  }));
+}
+
+/* ── Lightbox ── */
+function openLightbox(src) {
+  const lb = document.createElement('div');
+  lb.className = 'lightbox';
+  lb.innerHTML = `<img src="${src}">`;
+  lb.addEventListener('click', () => lb.remove());
+  document.body.appendChild(lb);
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2000); }
+
+/* ── 日历视图 ── */
+function toggleCalendar() {
+  showCalendar = !showCalendar;
+  const btn = document.getElementById('btn-cal');
+  if (showCalendar) {
+    btn.classList.add('active');
+    const now = new Date();
+    calYear = now.getFullYear(); calMonth = now.getMonth();
+    calSelectedDate = null;
+    renderCalendar();
+  } else {
+    btn.classList.remove('active');
+    calView.classList.remove('active');
+    listEl.classList.remove('hidden');
+    render(searchEl.value);
+  }
+}
+document.getElementById('btn-cal').addEventListener('click', toggleCalendar);
+
+function renderCalendar() {
+  calView.classList.add('active');
+  listEl.classList.add('hidden');
+  countEl.textContent = notes.length + ' 条';
+
+  const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  calView.querySelector('.cal-header').innerHTML = `
+    <button id="cal-prev">◀</button>
+    <span class="month-label">${calYear}年 ${months[calMonth]}</span>
+    <button id="cal-next">▶</button>`;
+  calView.querySelector('#cal-prev').addEventListener('click', () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); });
+  calView.querySelector('#cal-next').addEventListener('click', () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); });
+
+  calView.querySelector('.cal-day-labels').innerHTML = ['日','一','二','三','四','五','六'].map(d => `<div class="cal-day-label">${d}</div>`).join('');
+
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  // 哪些天有笔记
+  const noteDates = new Set();
+  for (const n of notes) {
+    const d = new Date(n.ts);
+    noteDates.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  }
+
+  let daysHtml = '';
+  for (let i = 0; i < firstDay; i++) daysHtml += '<div class="cal-day other-month"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = dateStr === todayStr;
+    const hasNote = noteDates.has(dateStr);
+    const isSelected = calSelectedDate === dateStr;
+    daysHtml += `<div class="cal-day${isToday ? ' today' : ''}${hasNote ? ' has-note' : ''}${isSelected ? ' selected' : ''}" data-date="${dateStr}">${d}</div>`;
+  }
+  calView.querySelector('.cal-days').innerHTML = daysHtml;
+  calView.querySelectorAll('.cal-day[data-date]').forEach(day => {
+    day.addEventListener('click', () => {
+      calSelectedDate = day.dataset.date;
+      renderCalendar();
+    });
+  });
+
+  // 选中日期的笔记
+  if (calSelectedDate) {
+    const startTs = new Date(calSelectedDate + 'T00:00:00+08:00').getTime();
+    const endTs = startTs + 86400000;
+    const dayNotes = notes.filter(n => n.ts >= startTs && n.ts < endTs);
+    calView.querySelector('.cal-notes-title').textContent = `📝 ${calSelectedDate} · ${dayNotes.length} 条笔记`;
+    calView.querySelector('.cal-notes-list').innerHTML = dayNotes.map(n => {
+      const imgs = n.images || [];
+      const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
+      return `<div class="card" data-id="${n.id}">
+        <div class="body short">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${esc(n.body)}</div>
+        ${imgHtml}
+      </div>`;
+    }).join('') || '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">这天没有笔记</div>';
+    calView.querySelectorAll('.cal-notes-list .card-images img').forEach(img => img.addEventListener('click', e => {
+      e.stopPropagation(); openLightbox(img.dataset.img);
+    }));
+  } else {
+    calView.querySelector('.cal-notes-title').textContent = '点击日期查看笔记';
+    calView.querySelector('.cal-notes-list').innerHTML = '';
+  }
+}
+
+/* ── API Key 设置 ── */
+function promptApiKey() {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.style.alignItems = 'center'; overlay.style.padding = '20px';
+  overlay.innerHTML = `
+    <div class="editor" style="border-radius:12px;max-width:400px">
+      <div style="text-align:center;color:var(--accent);font-family:var(--serif);font-size:18px;margin-bottom:4px">连接服务器</div>
+      <input type="password" id="apikey-input" placeholder="粘贴 API Key…" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font);outline:none">
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn btn-ghost" id="apikey-skip">跳过</button>
+        <button class="btn btn-save" id="apikey-save">连接</button>
+      </div></div>`;
+  document.body.appendChild(overlay);
+  const input = overlay.querySelector('#apikey-input'); input.focus();
+  overlay.querySelector('#apikey-skip').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#apikey-save').addEventListener('click', async () => {
+    const val = input.value.trim(); if (!val) return;
+    try {
+      const res = await fetch(API_BASE + '/auth/verify', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: val }) });
+      const data = await res.json();
+      if (data.valid) { localStorage.setItem(API_KEY_STORAGE, val); apiKey = val; overlay.remove(); toast('已连接服务器 ✓'); load(); }
+      else toast('密钥无效，请重试');
+    } catch { toast('无法连接服务器'); }
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+/* ── 编辑器 ── */
+function openEditor(id = null) {
+  editId = id;
+  const note = id ? notes.find(n => n.id === id) : null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="editor">
+      <div class="group-input-row" style="position:relative">
+        <label>📁</label>
+        <input type="text" id="note-group" placeholder="分组（点选或输入）…" value="${note ? esc(note.group || '') : ''}" autocomplete="off">
+        <div class="group-dropdown" id="group-dropdown"></div>
+      </div>
+      <div class="tag-input-row" id="tag-input-row" style="position:relative">
+        <label>🏷️</label>
+        <input type="text" id="tag-input" placeholder="输入标签后点 + 或回车…" autocomplete="off">
+        <button id="tag-add-btn" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:50%;width:28px;height:28px;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0">+</button>
+        <div class="group-dropdown" id="tag-dropdown"></div>
+      </div>
+      <div class="img-upload-row">
+        <label>🖼️</label>
+        <button class="btn-img-upload" id="btn-pick-image">+ 添加图片</button>
+        <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+        <span class="img-upload-progress" id="upload-progress"></span>
+      </div>
+      <div class="img-preview-wrap" id="img-preview-wrap"></div>
+      <textarea id="note-body" placeholder="此刻想写点什么…">${note ? esc(note.body) : ''}</textarea>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btn-cancel">取消</button>
+        <button class="btn btn-save" id="btn-save">保存</button>
+      </div></div>`;
+  document.body.appendChild(overlay);
+
+  const textarea = overlay.querySelector('#note-body');
+  const groupInput = overlay.querySelector('#note-group');
+  const tagInput = overlay.querySelector('#tag-input');
+  const tagRow = overlay.querySelector('#tag-input-row');
+  const groupDropdown = overlay.querySelector('#group-dropdown');
+  const tagDropdown = overlay.querySelector('#tag-dropdown');
+  const fileInput = overlay.querySelector('#file-input');
+  const imgPreview = overlay.querySelector('#img-preview-wrap');
+  const uploadProgress = overlay.querySelector('#upload-progress');
+
+  textarea.focus();
+  let currentTags = note ? [...safeTags(note.tags)] : [];
+  let currentImages = note ? [...(note.images || [])] : [];
+
+  /* ── 分组下拉 ── */
+  function populateGroupDropdown() {
+    if (groups.length === 0) { groupDropdown.classList.remove('show'); return; }
+    let html = '';
+    for (const g of groups) html += `<div class="group-dropdown-item">${esc(g.name)}</div>`;
+    groupDropdown.innerHTML = html;
+    groupDropdown.classList.add('show');
+    groupDropdown.querySelectorAll('.group-dropdown-item').forEach(item => {
+      item.addEventListener('mousedown', e => { e.preventDefault(); groupInput.value = item.textContent; groupDropdown.classList.remove('show'); });
+    });
+  }
+  groupInput.addEventListener('focus', () => populateGroupDropdown());
+  groupInput.addEventListener('input', () => {
+    const val = groupInput.value.toLowerCase();
+    groupDropdown.querySelectorAll('.group-dropdown-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(val) ? '' : 'none'; });
+  });
+  groupInput.addEventListener('blur', () => setTimeout(() => groupDropdown.classList.remove('show'), 150));
+
+  /* ── 标签 ── */
+  function addTagFromInput() {
+    const val = tagInput.value.trim();
+    if (val && !currentTags.includes(val)) { currentTags.push(val); renderTagChips(); }
+    tagInput.value = '';
+  }
+  function renderTagChips() {
+    tagRow.querySelectorAll('.tag-chip').forEach(c => c.remove());
+    for (const t of currentTags) {
+      const chip = document.createElement('span'); chip.className = 'tag-chip';
+      chip.innerHTML = `${esc(t)}<span class="tag-x" data-tag="${esc(t)}">×</span>`;
+      tagRow.insertBefore(chip, tagInput);
+    }
+    tagRow.querySelectorAll('.tag-x').forEach(x => { x.addEventListener('click', () => { currentTags = currentTags.filter(t => t !== x.dataset.tag); renderTagChips(); }); });
+  }
+  tagInput.addEventListener('keydown', e => { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); } });
+  tagInput.addEventListener('compositionend', () => setTimeout(() => { if (tagInput.value.endsWith(' ') || tagInput.value.endsWith('，') || tagInput.value.endsWith(',')) addTagFromInput(); }, 50));
+  overlay.querySelector('#tag-add-btn').addEventListener('click', () => { addTagFromInput(); tagInput.focus(); });
+  renderTagChips();
+
+  /* ── 标签下拉 ── */
+  function populateTagDropdown() {
+    const available = allTags.filter(t => !currentTags.includes(t.name));
+    if (available.length === 0) { tagDropdown.classList.remove('show'); return; }
+    let html = '';
+    for (const t of available) html += `<div class="group-dropdown-item">🏷 ${esc(t.name)}<span style="color:var(--text-muted);font-size:10px;margin-left:6px">${t.count}</span></div>`;
+    tagDropdown.innerHTML = html;
+    tagDropdown.classList.add('show');
+    tagDropdown.querySelectorAll('.group-dropdown-item').forEach(item => {
+      item.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const name = item.textContent.replace(/^🏷 /, '').replace(/\s+\d+$/, '');
+        if (name && !currentTags.includes(name)) { currentTags.push(name); renderTagChips(); }
+        tagInput.value = '';
+        tagDropdown.classList.remove('show');
+      });
+    });
+  }
+  tagInput.addEventListener('focus', () => populateTagDropdown());
+  tagInput.addEventListener('input', () => {
+    const val = tagInput.value.toLowerCase();
+    tagDropdown.querySelectorAll('.group-dropdown-item').forEach(item => {
+      const name = item.textContent.replace(/^🏷 /, '').replace(/\s+\d+$/, '');
+      item.style.display = name.toLowerCase().includes(val) ? '' : 'none';
+    });
+    if (!val) populateTagDropdown();
+    else if (!tagDropdown.classList.contains('show')) tagDropdown.classList.add('show');
+  });
+  tagInput.addEventListener('blur', () => setTimeout(() => tagDropdown.classList.remove('show'), 150));
+
+  tagInput.addEventListener('keydown', e => { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); } });
+  /* ── 图片 ── */
+  function renderImgPreview() {
+    imgPreview.innerHTML = currentImages.map(f => `
+      <div class="img-preview-item">
+        <img src="/uploads/${esc(f)}" alt="">
+        <button class="img-remove" data-file="${esc(f)}">×</button>
+      </div>`).join('');
+    imgPreview.querySelectorAll('.img-remove').forEach(btn => btn.addEventListener('click', () => {
+      currentImages = currentImages.filter(f => f !== btn.dataset.file);
+      renderImgPreview();
+    }));
+  }
+  renderImgPreview();
+
+  overlay.querySelector('#btn-pick-image').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const files = fileInput.files;
+    if (!files.length) return;
+    for (const f of files) {
+      uploadProgress.textContent = '上传中…';
+      const result = await uploadImage(f);
+      if (result && result.filename) {
+        currentImages.push(result.filename);
+        renderImgPreview();
+      }
+    }
+    uploadProgress.textContent = '';
+    fileInput.value = '';
+  });
+
+  /* ── 键盘适配 ── */
+  let vvHandler = null;
+  const origHeight = document.body.style.height || '';
+  const origOverflow = document.body.style.overflow || '';
+  if (window.visualViewport) {
+    vvHandler = () => {
+      const vh = window.visualViewport.height;
+      if (vh < window.innerHeight - 80) { document.body.style.height = vh + 'px'; document.body.style.overflow = 'hidden'; overlay.scrollTop = overlay.scrollHeight; textarea.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    };
+    window.visualViewport.addEventListener('resize', vvHandler);
+  }
+
+  const close = () => {
+    if (vvHandler) window.visualViewport.removeEventListener('resize', vvHandler);
+    document.body.style.height = origHeight; document.body.style.overflow = origOverflow;
+    overlay.remove(); editId = null;
+  };
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#btn-cancel').addEventListener('click', close);
+
+  overlay.querySelector('#btn-save').addEventListener('click', async () => {
+    const body = textarea.value.trim();
+    if (!body) { toast('内容不能为空哦～'); return; }
+    const groupVal = groupInput.value.trim();
+    const tags = [...currentTags];
+    const images = [...currentImages];
+
+    if (editId) {
+      const n = notes.find(n => n.id === editId);
+      if (n) { n.body = body; n.group = groupVal; n.tags = tags; n.images = images; n.ts = Date.now(); }
+      updateOnServer(n).catch(() => {});
+    } else {
+      const newNote = { id: genId(), body, group: groupVal, tags, images, ts: Date.now() };
+      notes.unshift(newNote);
+      saveToServer(newNote).catch(() => {});
+    }
+    saveLocal(); close(); render(searchEl.value); updateStatus(); fetchGroups(); fetchTags();
+    toast(editId ? '已更新 ✓' : '已保存 ✓');
+  });
+}
+
+async function deleteNote(id) {
+  if (!confirm('确定删除这条笔记吗？')) return;
+  notes = notes.filter(n => n.id !== id);
+  saveLocal();
+  deleteOnServer(id).catch(() => {});
+  render(searchEl.value); updateStatus(); fetchGroups(); fetchTags();
+  toast('已删除');
+}
+
+function genId() { return 'n_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+
+/* ── 导出 / 导入 ── */
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (notes.length === 0) { toast('没有可导出的笔记'); return; }
+  const blob = new Blob([JSON.stringify(notes, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'wanfeng-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click(); URL.revokeObjectURL(url); toast('导出成功 ✓');
+});
+document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
+document.getElementById('import-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const text = await file.text();
+    const imported = JSON.parse(text);
+    if (!Array.isArray(imported)) { toast('格式错误'); return; }
+    notes = imported; notes.sort((a,b) => b.ts - a.ts); saveLocal();
+    render(); toast(`导入 ${imported.length} 条 ✓`);
+  } catch { toast('JSON 解析失败'); }
+  e.target.value = '';
+});
+
+/* ── 设置 ── */
+document.getElementById('btn-settings').addEventListener('click', promptApiKey);
+
+/* ── 新建笔记 ── */
+document.getElementById('btn-add').addEventListener('click', () => openEditor());
+
+/* ── 搜索 ── */
+searchEl.addEventListener('input', () => render(searchEl.value));
+
+/* ── 启动 ── */
+load();
+</script>
+</body>
+</html>

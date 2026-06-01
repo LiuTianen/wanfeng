@@ -1,0 +1,18 @@
+{
+  "name": "晚风 · 个人笔记",
+  "short_name": "晚风",
+  "description": "万物藏于心 · 离线个人笔记",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#1a1a1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231a1a1a'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='serif' fill='%23c9a96e'>风</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

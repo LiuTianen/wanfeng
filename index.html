@@ -73,6 +73,17 @@
       padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
       display: flex; flex-direction: column; gap: 12px;
     }
+    /* 瀑布流容器 */
+    #list.desktop-masonry {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .masonry-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
     #list::-webkit-scrollbar { width: 4px; }
     #list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); gap: 12px; user-select: none; }
@@ -215,16 +226,15 @@
 
     @media (min-width: 600px) {
       #list {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 340px));
-        justify-content: center; align-items: start; gap: 14px; padding: 20px 24px 40px;
+        padding: 20px 24px 40px;
       }
       .card .body { max-height: 140px; }
-      .empty-state { grid-column: 1 / -1; min-height: 50vh; }
+      .empty-state { min-height: 50vh; display: flex; align-items: center; justify-content: center; }
       .card-images img { width: 100px; height: 100px; }
       #calendar-view { padding: 20px 24px 40px; }
     }
     @media (min-width: 900px) {
-      #list { grid-template-columns: repeat(auto-fill, minmax(240px, 360px)); padding: 24px 32px 48px; gap: 16px; }
+      #list { padding: 24px 32px 48px; }
       #calendar-view { padding: 24px 32px 48px; max-width: 700px; }
     }
   </style>
@@ -421,26 +431,39 @@ function render(filter = '') {
   countEl.textContent = notes.length + ' 条';
 
   if (filtered.length === 0) {
+    listEl.classList.remove('desktop-masonry');
     listEl.innerHTML = notes.length === 0
       ? `<div class="empty-state"><span class="icon">🍃</span><span class="hint">万物藏于心</span></div>`
       : `<div class="empty-state"><span class="hint">没有找到匹配的笔记</span></div>`;
     return;
   }
 
-  listEl.innerHTML = filtered.map(n => {
-    const date = new Date(n.ts);
-    const timeStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
-    const isLong = n.body.length > 200;
-    const imgs = n.images || [];
-    const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
-    return `<div class="card" data-id="${n.id}">
-        <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
-        <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${esc(n.body)}</div>
-        ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
-        ${imgHtml}
-        ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
-      </div>`;
-  }).join('');
+  const isDesktop = window.innerWidth >= 600;
+  const numCols = window.innerWidth >= 900 ? 4 : 3;
+
+  if (isDesktop) {
+    listEl.classList.add('desktop-masonry');
+    // JS 瀑布流：每张卡片塞进最短的列
+    const cols = Array.from({ length: numCols }, () => []);
+    for (const n of filtered) {
+      let shortest = 0;
+      for (let i = 1; i < numCols; i++) {
+        if (cols[i].length < cols[shortest].length) shortest = i;
+      }
+      cols[shortest].push(n);
+    }
+    const colGap = window.innerWidth >= 900 ? 16 : 14;
+    listEl.style.gap = colGap + 'px';
+    listEl.innerHTML = cols.map(colCards =>
+      `<div class="masonry-col" style="gap:${colGap}px">` +
+      colCards.map(n => buildCardHTML(n)).join('') +
+      '</div>'
+    ).join('');
+  } else {
+    listEl.classList.remove('desktop-masonry');
+    listEl.style.gap = '';
+    listEl.innerHTML = filtered.map(n => buildCardHTML(n)).join('');
+  }
 
   // event bindings
   listEl.querySelectorAll('.card').forEach(card => card.addEventListener('click', e => {
@@ -460,11 +483,24 @@ function render(filter = '') {
     if (bodyEl.classList.contains('expanded')) { bodyEl.classList.remove('expanded'); hint.textContent = '点击展开全文…'; }
     else { bodyEl.classList.add('expanded'); hint.textContent = '收起'; }
   }));
-  // image lightbox
   listEl.querySelectorAll('.card-images img').forEach(img => img.addEventListener('click', e => {
-    e.stopPropagation();
-    openLightbox(img.dataset.img);
+    e.stopPropagation(); openLightbox(img.dataset.img);
   }));
+}
+
+function buildCardHTML(n) {
+  const date = new Date(n.ts);
+  const timeStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
+  const isLong = n.body.length > 200;
+  const imgs = n.images || [];
+  const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
+  return `<div class="card" data-id="${n.id}">
+      <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
+      <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${esc(n.body)}</div>
+      ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
+      ${imgHtml}
+      ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
+    </div>`;
 }
 
 /* ── Lightbox ── */
@@ -566,31 +602,108 @@ function renderCalendar() {
 }
 
 /* ── API Key 设置 ── */
+let currentKeyIsAdmin = false;
+
 function promptApiKey() {
+  const key = getApiKey();
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.style.alignItems = 'center'; overlay.style.padding = '20px';
   overlay.innerHTML = `
-    <div class="editor" style="border-radius:12px;max-width:400px">
-      <div style="text-align:center;color:var(--accent);font-family:var(--serif);font-size:18px;margin-bottom:4px">连接服务器</div>
-      <input type="password" id="apikey-input" placeholder="粘贴 API Key…" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font);outline:none">
+    <div class="editor" style="border-radius:12px;max-width:480px">
+      <div style="text-align:center;color:var(--accent);font-family:var(--serif);font-size:18px;margin-bottom:8px">${key ? '设置' : '连接服务器'}</div>
+      ${key ? `<div style="text-align:center;font-size:12px;color:var(--text-muted);margin-bottom:12px">已连接${currentKeyIsAdmin ? ' · 管理员' : ''}</div>` : ''}
+      <input type="password" id="apikey-input" placeholder="粘贴 API Key…" value="${esc(key || '')}" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font);outline:none">
       <div class="btn-row" style="margin-top:14px">
-        <button class="btn btn-ghost" id="apikey-skip">跳过</button>
-        <button class="btn btn-save" id="apikey-save">连接</button>
-      </div></div>`;
+        <button class="btn btn-ghost" id="apikey-skip">关闭</button>
+        <button class="btn btn-save" id="apikey-save">${key ? '重新连接' : '连接'}</button>
+      </div>
+      <div id="admin-panel" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px"></div>
+    </div>`;
   document.body.appendChild(overlay);
   const input = overlay.querySelector('#apikey-input'); input.focus();
   overlay.querySelector('#apikey-skip').addEventListener('click', () => overlay.remove());
-  overlay.querySelector('#apikey-save').addEventListener('click', async () => {
+
+  async function doConnect() {
     const val = input.value.trim(); if (!val) return;
     try {
       const res = await fetch(API_BASE + '/auth/verify', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: val }) });
       const data = await res.json();
-      if (data.valid) { localStorage.setItem(API_KEY_STORAGE, val); apiKey = val; overlay.remove(); toast('已连接服务器 ✓'); load(); }
-      else toast('密钥无效，请重试');
+      if (data.valid) {
+        localStorage.setItem(API_KEY_STORAGE, val); apiKey = val;
+        currentKeyIsAdmin = data.is_admin || false;
+        toast('已连接 ✓');
+        if (data.is_admin) renderAdminPanel(overlay.querySelector('#admin-panel'));
+        else overlay.querySelector('#admin-panel').style.display = 'none';
+        load();
+      } else toast('密钥无效，请重试');
     } catch { toast('无法连接服务器'); }
-  });
+  }
+
+  overlay.querySelector('#apikey-save').addEventListener('click', doConnect);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  if (key && currentKeyIsAdmin) renderAdminPanel(overlay.querySelector('#admin-panel'));
+}
+
+async function adminApiFetch(path, opts = {}) {
+  const k = getApiKey();
+  const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k };
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (!res.ok) throw new Error('Admin API error: ' + res.status);
+  return res.json();
+}
+
+async function renderAdminPanel(panel) {
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px">加载中…</div>';
+  try {
+    const data = await adminApiFetch('/admin/keys');
+    const keys = data.keys || [];
+    let html = '<div style="font-size:14px;color:var(--accent);margin-bottom:12px">Key 管理 · ' + keys.length + ' 个</div>';
+    html += '<div style="max-height:200px;overflow-y:auto;margin-bottom:12px">';
+    for (const k of keys) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span><span style="color:var(--text)">${esc(k.label)}</span>${k.is_admin ? ' <span style="color:var(--accent);font-size:10px">admin</span>' : ''}
+        <span style="color:var(--text-muted);font-size:10px;margin-left:6px">${esc(k.key_preview)}</span>${k.revoked ? ' <span style="color:#d47272;font-size:10px">已撤销</span>' : ''}</span>
+        ${!k.is_admin && !k.revoked ? `<button data-id="${esc(k.id)}" style="background:none;border:none;color:#d47272;cursor:pointer;font-size:12px" class="btn-revoke">撤销</button>` : '<span style="width:32px"></span>'}
+      </div>`;
+    }
+    html += '</div>';
+    html += `<div style="display:flex;gap:8px">
+      <input type="text" id="new-key-label" placeholder="用户标签（如：小明）" style="flex:1;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none">
+      <button class="btn btn-save" id="btn-gen-key" style="padding:8px 16px;font-size:13px">生成</button>
+    </div>`;
+    html += '<div id="new-key-result" style="margin-top:8px;font-size:12px"></div>';
+    panel.innerHTML = html;
+
+    panel.querySelectorAll('.btn-revoke').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确定撤销这个 Key？')) return;
+        try { await adminApiFetch('/admin/keys/' + btn.dataset.id, { method: 'DELETE' }); renderAdminPanel(panel); toast('已撤销'); }
+        catch { toast('操作失败'); }
+      });
+    });
+
+    panel.querySelector('#btn-gen-key').addEventListener('click', async () => {
+      const label = panel.querySelector('#new-key-label').value.trim() || '用户';
+      try {
+        const result = await adminApiFetch('/admin/keys', { method: 'POST', body: JSON.stringify({ label }) });
+        const resultEl = panel.querySelector('#new-key-result');
+        resultEl.innerHTML = `<div style="background:var(--accent-dim);padding:10px;border-radius:8px;border:1px solid var(--accent)">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">新 Key（仅显示一次，请立即复制！）</div>
+          <div style="font-size:12px;word-break:break-all;color:var(--accent);cursor:pointer" id="copy-key">${esc(result.apikey)}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px">标签：${esc(result.label)}</div></div>`;
+        resultEl.querySelector('#copy-key').addEventListener('click', function() {
+          navigator.clipboard.writeText(this.textContent).then(() => toast('已复制 ✓'));
+        });
+        panel.querySelector('#new-key-label').value = '';
+        renderAdminPanel(panel);
+      } catch { toast('生成失败'); }
+    });
+  } catch {
+    panel.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px">加载失败（需要管理员权限）</div>';
+  }
 }
 
 /* ── 编辑器 ── */
@@ -824,6 +937,13 @@ searchEl.addEventListener('input', () => render(searchEl.value));
 
 /* ── 启动 ── */
 load();
+
+// 窗口缩放时重排瀑布流
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (!showCalendar) render(searchEl.value); }, 200);
+});
 </script>
 </body>
 </html>

@@ -41,16 +41,27 @@
     .status-dot.offline { background: #ff9800; }
     .status-dot.local { background: var(--text-muted); }
     .status-dot.unauth { background: #f44336; }
+    /* ── Floating icon buttons ── */
     .header-icon-btn {
-      width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border);
-      background: var(--surface); cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: all .2s; padding: 0;
+      width: 38px; height: 38px; border-radius: 50%;
+      border: none; background: transparent;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .25s ease; padding: 0;
     }
-    .header-icon-btn img { width: 22px; height: 22px; opacity: .7; }
-    .header-icon-btn:hover, .header-icon-btn.active { border-color: var(--accent); }
-    .header-icon-btn:hover img, .header-icon-btn.active img { opacity: 1; }
-    #btn-add { border-color: var(--accent); }
-    #btn-add img { opacity: 1; }
+    .header-icon-btn img {
+      width: 20px; height: 20px;
+      opacity: .45; filter: grayscale(40%);
+      transition: all .25s ease;
+    }
+    .header-icon-btn:hover { background: rgba(255,255,255,.05); }
+    .header-icon-btn:hover img { opacity: .85; filter: grayscale(0%); transform: scale(1.08); }
+    /* active (calendar open) */
+    .header-icon-btn.active { background: rgba(201,169,110,.1); }
+    .header-icon-btn.active img { opacity: 1; filter: grayscale(0%); }
+    /* add — always warm-lit */
+    #btn-add { background: rgba(201,169,110,.1); }
+    #btn-add img { opacity: 1; filter: grayscale(0%); }
+    #btn-add:hover { background: rgba(201,169,110,.18); box-shadow: 0 0 14px rgba(201,169,110,.12); }
 
     /* ── Search ── */
     .search-wrap { flex-shrink: 0; padding: 12px 20px 0; }

@@ -44,30 +44,46 @@
     /* ── Floating icon buttons ── */
     .header-icon-btn {
       width: 38px; height: 38px; border-radius: 50%;
-      border: none; background: transparent;
+      border: none;
+      background: rgba(255,255,255,.06);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: all .25s ease; padding: 0;
     }
     .header-icon-btn img {
       width: 20px; height: 20px;
-      opacity: .45; filter: grayscale(40%);
+      opacity: .55; filter: grayscale(30%);
       transition: all .25s ease;
     }
-    .header-icon-btn:hover { background: rgba(255,255,255,.05); }
-    .header-icon-btn:hover img { opacity: .85; filter: grayscale(0%); transform: scale(1.08); }
+    .header-icon-btn:hover { background: rgba(255,255,255,.1); }
+    .header-icon-btn:hover img { opacity: .9; filter: grayscale(0%); transform: scale(1.08); }
     /* active (calendar open) */
-    .header-icon-btn.active { background: rgba(201,169,110,.1); }
+    .header-icon-btn.active { background: rgba(201,169,110,.12); }
     .header-icon-btn.active img { opacity: 1; filter: grayscale(0%); }
-    /* add — always warm-lit */
-    #btn-add { background: rgba(201,169,110,.1); }
+    /* add — warm glow */
+    #btn-add { background: rgba(201,169,110,.12); }
     #btn-add img { opacity: 1; filter: grayscale(0%); }
-    #btn-add:hover { background: rgba(201,169,110,.18); box-shadow: 0 0 14px rgba(201,169,110,.12); }
+    #btn-add:hover { background: rgba(201,169,110,.2); box-shadow: 0 0 14px rgba(201,169,110,.12); }
 
-    /* ── Search ── */
-    .search-wrap { flex-shrink: 0; padding: 12px 20px 0; }
+    /* ── Search (collapsible) ── */
+    .search-wrap {
+      flex-shrink: 0;
+      max-height: 0; overflow: hidden;
+      transition: max-height .3s ease, padding .3s ease;
+      padding: 0 20px;
+    }
+    .search-wrap.open {
+      max-height: 56px;
+      padding: 12px 20px 4px;
+    }
     #search { width: 100%; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 14px; font-family: var(--font); outline: none; transition: border-color .25s; }
     #search::placeholder { color: var(--text-muted); }
     #search:focus { border-color: var(--accent); }
+    /* search icon button (inline SVG) */
+    #btn-search svg { width: 17px; height: 17px; }
+    #btn-search svg circle,
+    #btn-search svg line { stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; }
+    #btn-search { color: var(--text-muted); }
+    #btn-search:hover { color: var(--accent); }
 
     /* ── Group Filter Bar ── */
     .group-bar {
@@ -285,6 +301,7 @@
   <span id="status-dot" class="status-dot local" title="本地模式"></span>
   <span class="count" id="count">0 条</span>
   <div class="header-btns">
+    <button id="btn-search" class="header-icon-btn" title="搜索"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><line x1="16" y1="16" x2="22" y2="22"/></svg></button>
     <button id="btn-conn" class="header-icon-btn" title="连接服务器"><img src="/链接.png" alt="连接"></button>
     <button id="btn-cal" class="header-icon-btn" title="日历视图"><img src="/日历.png" alt="日历"></button>
     <button id="btn-settings" class="header-icon-btn" title="设置"><img src="/设置.png" alt="设置"></button>
@@ -1058,6 +1075,13 @@ document.getElementById('btn-settings').addEventListener('click', promptSettings
 document.getElementById('btn-add').addEventListener('click', () => openEditor());
 
 /* ── 搜索 ── */
+// collapsible search
+const searchWrap = document.querySelector('.search-wrap');
+document.getElementById('btn-search').addEventListener('click', () => {
+  const open = searchWrap.classList.toggle('open');
+  if (open) { searchEl.focus(); }
+  else { searchEl.value = ''; render(); }
+});
 searchEl.addEventListener('input', () => render(searchEl.value));
 
 /* ── 启动 ── */

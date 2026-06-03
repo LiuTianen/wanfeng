@@ -56,6 +56,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS notes (
             id TEXT PRIMARY KEY,
             body TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
             \"group\" TEXT NOT NULL DEFAULT '',
             tags TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
@@ -65,9 +66,9 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(\"group\")")
     # 迁移
-    for col, default in [("group", "''"), ("tags", "'[]'")]:
+    for col, default in [("title", "''"), ("group", "''"), ("tags", "'[]'")]:
         try:
-            db.execute(f"ALTER TABLE notes ADD COLUMN \"{col}\" TEXT NOT NULL DEFAULT {default}")
+            db.execute(f"ALTER TABLE notes ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
         except:
             pass
     db.commit()
@@ -151,6 +152,7 @@ def create_note():
     if not body:
         return jsonify({"error": "body is required"}), 400
 
+    title = (data.get("title", "") or "").strip()
     group = (data.get("group", "") or "").strip()
     tags = data.get("tags", [])
     if not isinstance(tags, list): tags = []
@@ -160,13 +162,13 @@ def create_note():
 
     db = get_db()
     db.execute(
-        "INSERT OR REPLACE INTO notes (id, body, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (note_id, body, group, tags_json, now, now),
+        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (note_id, body, title, group, tags_json, now, now),
     )
     db.commit()
 
     return jsonify({
-        "id": note_id, "body": body, "group": group, "tags": json.loads(tags_json),
+        "id": note_id, "body": body, "title": title, "group": group, "tags": json.loads(tags_json),
         "ts": iso_to_ts(now), "created_at": now, "updated_at": now,
     }), 201
 
@@ -185,6 +187,7 @@ def update_note(note_id):
     if not body:
         return jsonify({"error": "body is required"}), 400
 
+    title = (data.get("title", "") or "").strip()
     group = (data.get("group", "") or "").strip()
     tags = data.get("tags", [])
     if not isinstance(tags, list): tags = []
@@ -195,18 +198,18 @@ def update_note(note_id):
     row = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
     if row:
         db.execute(
-            "UPDATE notes SET body = ?, \"group\" = ?, tags = ?, updated_at = ? WHERE id = ?",
-            (body, group, tags_json, now, note_id),
+            "UPDATE notes SET body = ?, title = ?, \"group\" = ?, tags = ?, updated_at = ? WHERE id = ?",
+            (body, title, group, tags_json, now, note_id),
         )
     else:
         db.execute(
-            "INSERT INTO notes (id, body, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (note_id, body, group, tags_json, now, now),
+            "INSERT INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, now, now),
         )
     db.commit()
 
     return jsonify({
-        "id": note_id, "body": body, "group": group, "tags": json.loads(tags_json),
+        "id": note_id, "body": body, "title": title, "group": group, "tags": json.loads(tags_json),
         "ts": iso_to_ts(now), "updated_at": now,
     })
 
@@ -304,6 +307,7 @@ def note_row(r):
     return {
         "id": r["id"],
         "body": r["body"],
+        "title": r["title"] or "",
         "group": r["group"] or "",
         "tags": json.loads(r["tags"] or "[]"),
         "ts": iso_to_ts(r["updated_at"]),

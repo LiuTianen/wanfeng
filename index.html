@@ -132,7 +132,9 @@
     .card .actions button { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
     .card .actions button:hover { color: var(--accent); }
     .card .actions button.del:hover { color: #d47272; }
+    .card .title { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 6px; line-height: 1.4; }
     .card .body { color: var(--text); font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: hidden; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
+    .card .body em, .card .body i { font-style: italic; color: var(--text-muted); font-family: var(--serif); }
     .card .body.expanded { max-height: none; mask-image: none; -webkit-mask-image: none; }
     .card .body.short { max-height: none; }
     .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -193,6 +195,13 @@
       padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 14px;
       animation: fadeUp .25s ease; box-shadow: 0 8px 32px rgba(0,0,0,.4);
     }
+    .note-title-input {
+      width: 100%; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 15px; font-weight: 600;
+      font-family: var(--serif); outline: none; transition: border-color .25s;
+    }
+    .note-title-input:focus { border-color: var(--accent); }
+    .note-title-input::placeholder { font-weight: 400; color: var(--text-muted); }
     .editor textarea {
       width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
       color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.8;
@@ -385,7 +394,7 @@ function mergeNotes(serverNotes, localNotes) {
   const map = new Map();
   for (const n of localNotes) map.set(n.id, n);
   for (const n of serverNotes) map.set(n.id, {
-    id: n.id, body: n.body, group: n.group || '', tags: safeTags(n.tags),
+    id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags),
     images: n.images || [], ts: n.ts || Date.now()
   });
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
@@ -433,11 +442,11 @@ function renderGroupBar() {
 /* ── 服务端操作 ── */
 async function saveToServer(note) {
   if (!getApiKey()) return null;
-  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
 }
 async function updateOnServer(note) {
   if (!getApiKey()) return null;
-  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
 }
 async function deleteOnServer(id) {
   if (!getApiKey()) return null;
@@ -551,9 +560,11 @@ function buildCardHTML(n) {
   const isLong = n.body.length > 200;
   const imgs = n.images || [];
   const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
+  const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
   return `<div class="card" data-id="${n.id}">
       <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
-      <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${esc(n.body)}</div>
+      ${n.title ? '<div class="title">'+esc(n.title)+'</div>' : ''}
+      <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
       ${imgHtml}
       ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
@@ -856,6 +867,7 @@ function openEditor(id = null) {
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="editor">
+      <input type="text" id="note-title" class="note-title-input" placeholder="标题（选填）…" value="${note ? esc(note.title || '') : ''}" autocomplete="off">
       <div class="group-input-row" style="position:relative">
         <label>📁</label>
         <input type="text" id="note-group" placeholder="分组（点选或输入）…" value="${note ? esc(note.group || '') : ''}" autocomplete="off">
@@ -1017,16 +1029,17 @@ function openEditor(id = null) {
   overlay.querySelector('#btn-save').addEventListener('click', async () => {
     const body = textarea.value.trim();
     if (!body) { toast('内容不能为空哦～'); return; }
+    const titleVal = (overlay.querySelector('#note-title').value || '').trim();
     const groupVal = groupInput.value.trim();
     const tags = [...currentTags];
     const images = [...currentImages];
 
     if (editId) {
       const n = notes.find(n => n.id === editId);
-      if (n) { n.body = body; n.group = groupVal; n.tags = tags; n.images = images; n.ts = Date.now(); }
+      if (n) { n.body = body; n.title = titleVal; n.group = groupVal; n.tags = tags; n.images = images; n.ts = Date.now(); }
       updateOnServer(n).catch(() => {});
     } else {
-      const newNote = { id: genId(), body, group: groupVal, tags, images, ts: Date.now() };
+      const newNote = { id: genId(), body, title: titleVal, group: groupVal, tags, images, ts: Date.now() };
       notes.unshift(newNote);
       saveToServer(newNote).catch(() => {});
     }

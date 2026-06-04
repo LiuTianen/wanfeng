@@ -27,16 +27,14 @@
     body { overflow: hidden; }
 
     /* ── Header ── */
-    header {
+    header h1 { font-family: var(--serif); font-size: 22px; font-weight: 400; color: var(--accent); letter-spacing: 2px; }
+        header {
       flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
       padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 12px;
       border-bottom: 1px solid var(--border); background: var(--bg);
       position: sticky; top: 0; z-index: 10;
     }
-    .view-tabs { display: flex; gap: 6px; align-items: center; }
-    .view-tab { font-family: var(--serif); font-size: 15px; font-weight: 400; color: var(--text-muted); cursor: pointer; padding: 4px 10px; border-radius: 14px; transition: all .2s; letter-spacing: 1px; user-select: none; }
-    .view-tab.active { color: var(--accent); background: rgba(201,169,110,.08); }
-    .view-tab:hover:not(.active) { color: var(--text); }
+    
     header .count { font-size: 12px; color: var(--text-muted); flex: 1; text-align: center; }
     .header-btns { display: flex; gap: 10px; align-items: center; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
@@ -320,10 +318,7 @@
 <body>
 
 <header>
-  <div class="view-tabs">
-    <span class="view-tab active" data-view="my">晚 风</span>
-    <span class="view-tab" data-view="discover">发 现</span>
-  </div>
+  <h1>晚 风</h1>
   <span id="status-dot" class="status-dot local" title="本地模式"></span>
   <span class="count" id="count">0 条</span>
   <div class="header-btns" id="header-btns">
@@ -350,11 +345,7 @@
   <div class="cal-notes-list"></div>
 </div>
 
-<div class="bottom-bar">
-  <button id="btn-export">导出</button>
-  <button id="btn-import">导入</button>
-  <input type="file" id="import-file" accept=".json">
-</div>
+<input type="file" id="import-file" accept=".json" style="display:none">
 
 <script>
 // ═══════════════════════════════════════
@@ -505,11 +496,11 @@ const discoverFooter = document.getElementById('discover-footer');
 const headerBtns = document.getElementById('header-btns');
 let currentView = 'my';
 
-document.querySelectorAll('.view-tab').forEach(tab => {
+document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const view = tab.dataset.view;
     if (view === currentView) return;
-    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     currentView = view;
     if (view === 'discover') {
@@ -649,7 +640,6 @@ function buildCardHTML(n) {
   const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
   return `<div class="card" data-id="${n.id}">
       <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
-      ${n.title ? '<div class="title">'+esc(n.title)+'</div>' : ''}
       ${n.title ? '<div class="title">'+esc(n.title)+(n.shared ? ' <span style="font-size:10px;opacity:.6;font-weight:400">🌐</span>' : '')+'</div>' : ''}
       <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
@@ -826,11 +816,39 @@ function promptSettings() {
         </div>
       </div>
       <div id="admin-panel" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px"></div>
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">📦 数据</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost" id="settings-export" style="font-size:12px;padding:8px 16px">📤 导出 JSON</button>
+          <button class="btn btn-ghost" id="settings-import" style="font-size:12px;padding:8px 16px">📥 导入 JSON</button>
+        </div>
+        <input type="file" id="settings-import-file" accept=".json" style="display:none">
+      </div>
       <div class="btn-row" style="margin-top:16px">
         <button class="btn btn-ghost" id="settings-close">关闭</button>
       </div></div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#settings-close').addEventListener('click', () => overlay.remove());
+  // 导出
+  overlay.querySelector('#settings-export').addEventListener('click', () => {
+    if (notes.length === 0) { toast('没有可导出的笔记'); return; }
+    const blob = new Blob([JSON.stringify(notes, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'wanfeng-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click(); URL.revokeObjectURL(url); toast('导出成功 ✓');
+  });
+  // 导入
+  overlay.querySelector('#settings-import').addEventListener('click', () => overlay.querySelector('#settings-import-file').click());
+  overlay.querySelector('#settings-import-file').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      const text = await file.text();
+      const imported = JSON.parse(text);
+      if (!Array.isArray(imported)) { toast('格式错误'); return; }
+      notes = imported; notes.sort((a,b) => b.ts - a.ts); saveLocal();
+      overlay.remove(); render(); toast('导入 ' + imported.length + ' 条 ✓');
+    } catch { toast('JSON 解析失败'); }
+  });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
   // 背景设置
@@ -1155,25 +1173,7 @@ async function deleteNote(id) {
 function genId() { return 'n_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
 
 /* ── 导出 / 导入 ── */
-document.getElementById('btn-export').addEventListener('click', () => {
-  if (notes.length === 0) { toast('没有可导出的笔记'); return; }
-  const blob = new Blob([JSON.stringify(notes, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'wanfeng-backup-' + new Date().toISOString().slice(0,10) + '.json';
-  a.click(); URL.revokeObjectURL(url); toast('导出成功 ✓');
-});
-document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
-document.getElementById('import-file').addEventListener('change', async e => {
-  const file = e.target.files[0]; if (!file) return;
-  try {
-    const text = await file.text();
-    const imported = JSON.parse(text);
-    if (!Array.isArray(imported)) { toast('格式错误'); return; }
-    notes = imported; notes.sort((a,b) => b.ts - a.ts); saveLocal();
-    render(); toast(`导入 ${imported.length} 条 ✓`);
-  } catch { toast('JSON 解析失败'); }
-  e.target.value = '';
-});
+
 
 /* ── 设置 ── */
 document.getElementById('btn-conn').addEventListener('click', promptConnection);
@@ -1203,5 +1203,10 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (!showCalendar) render(searchEl.value); }, 200);
 });
 </script>
+<div class="bottom-nav" id="bottom-nav">
+  <button class="nav-tab active" data-view="my">晚 风</button>
+  <button class="nav-tab" data-view="discover">发 现</button>
+</div>
+
 </body>
 </html>

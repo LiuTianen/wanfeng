@@ -63,13 +63,14 @@ def init_db():
             "group" TEXT NOT NULL DEFAULT '',
             tags TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            shared INTEGER NOT NULL DEFAULT 0
         )
     """)
     db.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC)")
     db.execute('CREATE INDEX IF NOT EXISTS idx_notes_group ON notes("group")')
     # 迁移
-    for col, default in [("title", "''"), ("group", "''"), ("tags", "'[]'")]:
+    for col, default in [("title", "''"), ("group", "''"), ("tags", "'[]'"), ("shared", "0")]:
         try:
             db.execute(f"ALTER TABLE notes ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
         except:
@@ -141,18 +142,18 @@ def list_notes():
     tag = request.args.get("tag", "")
     if group:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
             (group,)
         ).fetchall()
     elif tag:
         # 标签筛选用 LIKE 匹配 JSON 数组中的标签名
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
             (f'%"{tag}"%',)
         ).fetchall()
     else:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
         ).fetchall()
 
     notes = []
@@ -185,8 +186,8 @@ def create_note():
 
     db = get_db()
     db.execute(
-        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (note_id, body, title, group, tags_json, now, now),
+        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (note_id, body, title, group, tags_json, 1 if data.get("shared") else 0, now, now),
     )
     db.commit()
 
@@ -221,13 +222,13 @@ def update_note(note_id):
     row = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
     if row:
         db.execute(
-            "UPDATE notes SET body = ?, title = ?, \"group\" = ?, tags = ?, updated_at = ? WHERE id = ?",
-            (body, title, group, tags_json, now, note_id),
+            "UPDATE notes SET body = ?, title = ?, \"group\" = ?, tags = ?, shared = ?, updated_at = ? WHERE id = ?",
+            (body, title, group, tags_json, 1 if data.get("shared") else 0, now, note_id),
         )
     else:
         db.execute(
-            "INSERT INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (note_id, body, title, group, tags_json, now, now),
+            "INSERT INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, 1 if data.get("shared") else 0, now, now),
         )
     db.commit()
 
@@ -276,8 +277,8 @@ def sync_notes():
         created = note.get("created_at", now)
         title = (note.get("title", "") or "").strip()
         db.execute(
-            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (note_id, body, title, group, tags_json, created, now),
+            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, 1 if note.get("shared") else 0, created, now),
         )
         upserted += 1
 
@@ -285,12 +286,30 @@ def sync_notes():
 
     # 返回合并后的全部笔记
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+        "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
     ).fetchall()
     all_notes = [note_row(r) for r in rows]
 
     return jsonify({"upserted": upserted, "total": len(all_notes), "notes": all_notes})
 
+
+
+# ── 发现页（公开）──
+@app.route("/api/discover", methods=["GET"])
+def discover():
+    """公开接口：浏览被分享的笔记。无认证最多 10 条，有认证无限制"""
+    db = get_db()
+    limit = 10
+    if check_auth():
+        limit = -1  # SQLite: -1 = no limit
+    rows = db.execute(
+        "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY updated_at DESC" +
+        (" LIMIT ?" if limit > 0 else ""),
+        (limit,) if limit > 0 else ()
+    ).fetchall()
+    notes = [note_row(r) for r in rows]
+    has_more = len(notes) >= limit if limit > 0 else False
+    return jsonify({"notes": notes, "has_more": has_more, "authenticated": check_auth()})
 
 # ── 分组 ──
 @app.route("/api/groups", methods=["GET"])
@@ -336,6 +355,7 @@ def note_row(r):
         "tags": json.loads(r["tags"] or "[]"),
         "ts": iso_to_ts(r["updated_at"]),
         "created_at": r["created_at"],
+        "shared": bool(r["shared"]),
         "updated_at": r["updated_at"],
     }
 def gen_id():

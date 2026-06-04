@@ -33,7 +33,10 @@
       border-bottom: 1px solid var(--border); background: var(--bg);
       position: sticky; top: 0; z-index: 10;
     }
-    header h1 { font-family: var(--serif); font-size: 22px; font-weight: 400; color: var(--accent); letter-spacing: 2px; }
+    .view-tabs { display: flex; gap: 6px; align-items: center; }
+    .view-tab { font-family: var(--serif); font-size: 15px; font-weight: 400; color: var(--text-muted); cursor: pointer; padding: 4px 10px; border-radius: 14px; transition: all .2s; letter-spacing: 1px; user-select: none; }
+    .view-tab.active { color: var(--accent); background: rgba(201,169,110,.08); }
+    .view-tab:hover:not(.active) { color: var(--text); }
     header .count { font-size: 12px; color: var(--text-muted); flex: 1; text-align: center; }
     .header-btns { display: flex; gap: 10px; align-items: center; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
@@ -154,7 +157,18 @@
       grid-template-rows: auto auto minmax(260px, 1.0fr) auto minmax(0, 1.2fr);
       gap: 6px;
     }
-    #list.hidden { display: none; }
+    #list.hidden, #calendar-view.hidden-view { display: none; }
+    /* ── Discover ── */
+    #discover-view { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .discover-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: all .2s; animation: fadeUp .3s ease both; }
+    .discover-card:hover { border-color: var(--accent-dim); }
+    .discover-card .dc-title { font-family: var(--serif); font-size: 17px; font-weight: 700; color: var(--accent); margin-bottom: 10px; line-height: 1.5; }
+    .discover-card .dc-body { color: var(--text); font-size: 14px; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+    .discover-card .dc-body em { font-style: italic; color: var(--text-muted); font-family: var(--serif); }
+    .discover-card .dc-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+    .discover-card .dc-group { color: var(--accent); }
+    .discover-card .dc-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .discover-card .dc-images img { width: 100%; max-width: 300px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
     .cal-header { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
     .cal-header .month-label { font-family: var(--serif); font-size: 18px; color: var(--accent); }
     .cal-header button { background: none; border: 1px solid var(--border); color: var(--text-muted); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
@@ -306,10 +320,13 @@
 <body>
 
 <header>
-  <h1>晚 风</h1>
+  <div class="view-tabs">
+    <span class="view-tab active" data-view="my">晚 风</span>
+    <span class="view-tab" data-view="discover">发 现</span>
+  </div>
   <span id="status-dot" class="status-dot local" title="本地模式"></span>
   <span class="count" id="count">0 条</span>
-  <div class="header-btns">
+  <div class="header-btns" id="header-btns">
     <button id="btn-search" class="header-icon-btn" title="搜索"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><line x1="16" y1="16" x2="22" y2="22"/></svg></button>
     <button id="btn-conn" class="header-icon-btn" title="连接服务器"><img src="/链接.png" alt="连接"></button>
     <button id="btn-cal" class="header-icon-btn" title="日历视图"><img src="/日历.png" alt="日历"></button>
@@ -319,6 +336,10 @@
 </header>
 
 <div class="search-wrap"><input type="text" id="search" placeholder="翻一翻旧时光…"></div>
+<div id="discover-view" style="display:none;flex-direction:column;gap:14px">
+  <div id="discover-list"></div>
+  <div id="discover-footer" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px"></div>
+</div>
 <div class="group-bar" id="group-bar"></div>
 <div id="list"></div>
 <div id="calendar-view">
@@ -394,7 +415,7 @@ function mergeNotes(serverNotes, localNotes) {
   const map = new Map();
   for (const n of localNotes) map.set(n.id, n);
   for (const n of serverNotes) map.set(n.id, {
-    id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags),
+    id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
     images: n.images || [], ts: n.ts || Date.now()
   });
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
@@ -442,11 +463,11 @@ function renderGroupBar() {
 /* ── 服务端操作 ── */
 async function saveToServer(note) {
   if (!getApiKey()) return null;
-  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [], shared: note.shared || false }) }); } catch { return null; }
 }
 async function updateOnServer(note) {
   if (!getApiKey()) return null;
-  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [] }) }); } catch { return null; }
+  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [], shared: note.shared || false }) }); } catch { return null; }
 }
 async function deleteOnServer(id) {
   if (!getApiKey()) return null;
@@ -478,6 +499,71 @@ function updateStatus(s) {
 /* ── 渲染列表 ── */
 const listEl = document.getElementById('list');
 const searchEl = document.getElementById('search');
+const discoverView = document.getElementById('discover-view');
+const discoverList = document.getElementById('discover-list');
+const discoverFooter = document.getElementById('discover-footer');
+const headerBtns = document.getElementById('header-btns');
+let currentView = 'my';
+
+document.querySelectorAll('.view-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const view = tab.dataset.view;
+    if (view === currentView) return;
+    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentView = view;
+    if (view === 'discover') {
+      listEl.classList.add('hidden');
+      if (calView) calView.classList.add('hidden-view');
+      searchWrap.classList.remove('open');
+      headerBtns.style.display = 'none';
+      discoverView.style.display = 'flex';
+      loadDiscover();
+    } else {
+      listEl.classList.remove('hidden');
+      if (calView) calView.classList.remove('hidden-view');
+      headerBtns.style.display = '';
+      discoverView.style.display = 'none';
+      render(searchEl.value);
+    }
+  });
+});
+
+async function loadDiscover() {
+  discoverList.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="hint">加载中…</div></div>';
+  try {
+    const headers = {};
+    if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+    const res = await fetch(API_BASE + '/discover', { headers });
+    const data = await res.json();
+    if (!data.notes || data.notes.length === 0) {
+      discoverList.innerHTML = '<div class="empty-state"><div class="icon">🌙</div><div class="hint">还没有人分享笔记</div></div>';
+      discoverFooter.textContent = '';
+      return;
+    }
+    let html = '';
+    for (const n of data.notes) {
+      const date = new Date(n.ts);
+      const timeStr = date.toLocaleDateString('zh-CN', { month:'long', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
+      const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
+      const imgs = n.images || [];
+      const imgHtml = imgs.length ? '<div class="dc-images">' + imgs.map(f => '<img src="/uploads/' + esc(f) + '" alt="" loading="lazy" onclick="openLightbox(\'/uploads/' + esc(f) + '\')">').join('') + '</div>' : '';
+      html += '<div class="discover-card">' +
+        (n.title ? '<div class="dc-title">' + esc(n.title) + '</div>' : '') +
+        '<div class="dc-body">' + bodyHTML + '</div>' +
+        (n.tags && n.tags.length ? '<div class="card-tags" style="margin-top:8px">' + n.tags.map(t => '<span class="card-tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
+        imgHtml +
+        '<div class="dc-meta"><span>' + timeStr + '</span>' + (n.group ? '<span class="dc-group">' + esc(n.group) + '</span>' : '') + '</div>' +
+        '</div>';
+    }
+    discoverList.innerHTML = html;
+    discoverFooter.textContent = data.authenticated ? '已连接 · 全部分享可见' : (data.has_more ? '连接服务器查看更多…' : '未连接 · 仅显示最近 10 条');
+  } catch (e) {
+    discoverList.innerHTML = '<div class="empty-state"><div class="icon">💫</div><div class="hint">加载失败</div></div>';
+    discoverFooter.textContent = '';
+  }
+}
+
 const countEl = document.getElementById('count');
 const calView = document.getElementById('calendar-view');
 
@@ -564,6 +650,7 @@ function buildCardHTML(n) {
   return `<div class="card" data-id="${n.id}">
       <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
       ${n.title ? '<div class="title">'+esc(n.title)+'</div>' : ''}
+      ${n.title ? '<div class="title">'+esc(n.title)+(n.shared ? ' <span style="font-size:10px;opacity:.6;font-weight:400">🌐</span>' : '')+'</div>' : ''}
       <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
       ${imgHtml}
@@ -886,6 +973,12 @@ function openEditor(id = null) {
         <span class="img-upload-progress" id="upload-progress"></span>
       </div>
       <div class="img-preview-wrap" id="img-preview-wrap"></div>
+      <div class="share-toggle-row" style="margin-bottom:2px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-muted)">
+          <input type="checkbox" id="note-shared" style="accent-color:var(--accent)">
+          <span>🌐 公开此笔记</span>
+        </label>
+      </div>
       <textarea id="note-body" placeholder="此刻想写点什么…">${note ? esc(note.body) : ''}</textarea>
       <div class="btn-row">
         <button class="btn btn-ghost" id="btn-cancel">取消</button>
@@ -904,6 +997,7 @@ function openEditor(id = null) {
   const uploadProgress = overlay.querySelector('#upload-progress');
 
   textarea.focus();
+  if (note) { overlay.querySelector('#note-shared').checked = note.shared || false; }
   let currentTags = note ? [...safeTags(note.tags)] : [];
   let currentImages = note ? [...(note.images || [])] : [];
 
@@ -1030,16 +1124,17 @@ function openEditor(id = null) {
     const body = textarea.value.trim();
     if (!body) { toast('内容不能为空哦～'); return; }
     const titleVal = (overlay.querySelector('#note-title').value || '').trim();
+    const shared = overlay.querySelector('#note-shared')?.checked || false;
     const groupVal = groupInput.value.trim();
     const tags = [...currentTags];
     const images = [...currentImages];
 
     if (editId) {
       const n = notes.find(n => n.id === editId);
-      if (n) { n.body = body; n.title = titleVal; n.group = groupVal; n.tags = tags; n.images = images; n.ts = Date.now(); }
+      if (n) { n.body = body; n.title = titleVal; n.group = groupVal; n.tags = tags; n.images = images; n.shared = shared; n.ts = Date.now(); }
       updateOnServer(n).catch(() => {});
     } else {
-      const newNote = { id: genId(), body, title: titleVal, group: groupVal, tags, images, ts: Date.now() };
+      const newNote = { id: genId(), body, title: titleVal, group: groupVal, tags, images, shared, ts: Date.now() };
       notes.unshift(newNote);
       saveToServer(newNote).catch(() => {});
     }

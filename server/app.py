@@ -118,18 +118,18 @@ def list_notes():
     tag = request.args.get("tag", "")
     if group:
         rows = db.execute(
-            "SELECT id, body, \"group\", tags, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
             (group,)
         ).fetchall()
     elif tag:
         # 标签筛选用 LIKE 匹配 JSON 数组中的标签名
         rows = db.execute(
-            "SELECT id, body, \"group\", tags, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
             (f'%"{tag}"%',)
         ).fetchall()
     else:
         rows = db.execute(
-            "SELECT id, body, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+            "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
         ).fetchall()
 
     notes = []
@@ -251,9 +251,10 @@ def sync_notes():
         if not isinstance(tags, list): tags = []
         tags_json = json.dumps([t.strip() for t in tags if isinstance(t, str) and t.strip()])
         created = note.get("created_at", now)
+        title = (note.get("title", "") or "").strip()
         db.execute(
-            "INSERT OR REPLACE INTO notes (id, body, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (note_id, body, group, tags_json, created, now),
+            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, created, now),
         )
         upserted += 1
 
@@ -261,7 +262,7 @@ def sync_notes():
 
     # 返回合并后的全部笔记
     rows = db.execute(
-        "SELECT id, body, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+        "SELECT id, body, title, \"group\", tags, created_at, updated_at FROM notes ORDER BY updated_at DESC"
     ).fetchall()
     all_notes = [note_row(r) for r in rows]
 

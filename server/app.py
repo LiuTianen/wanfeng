@@ -22,6 +22,9 @@ DB_PATH = DB_DIR / "notes.db"
 KEY_FILE = DB_DIR / ".apikey"
 
 def get_or_create_apikey():
+    # 重新部署时生成全新 Key
+    if os.environ.get("WANFENG_RESET_KEY") == "1":
+        KEY_FILE.unlink(missing_ok=True)
     if KEY_FILE.exists():
         return KEY_FILE.read_text().strip()
     key = secrets.token_urlsafe(32)
@@ -57,23 +60,43 @@ def init_db():
             id TEXT PRIMARY KEY,
             body TEXT NOT NULL,
             title TEXT NOT NULL DEFAULT '',
-            \"group\" TEXT NOT NULL DEFAULT '',
+            "group" TEXT NOT NULL DEFAULT '',
             tags TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
     """)
     db.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(\"group\")")
+    db.execute('CREATE INDEX IF NOT EXISTS idx_notes_group ON notes("group")')
     # 迁移
     for col, default in [("title", "''"), ("group", "''"), ("tags", "'[]'")]:
         try:
             db.execute(f"ALTER TABLE notes ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
         except:
             pass
+    # users 表 + 管理员种子
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            apikey_hash TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL DEFAULT '',
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            revoked INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    if os.environ.get("WANFENG_RESET_KEY") == "1":
+        db.execute("DELETE FROM users WHERE is_admin = 1")
+    # 没有管理员则创建
+    admin_exists = db.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1").fetchone()
+    if not admin_exists:
+        import uuid
+        db.execute(
+            "INSERT INTO users (id, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, 1, ?)",
+            (str(uuid.uuid4()), API_KEY_HASH, "管理员", datetime.now(timezone.utc).isoformat()),
+        )
     db.commit()
     db.close()
-
 
 # ── Auth ──
 def check_auth():

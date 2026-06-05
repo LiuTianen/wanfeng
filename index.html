@@ -347,6 +347,11 @@
 
 <input type="file" id="import-file" accept=".json" style="display:none">
 
+<div class="bottom-nav" id="bottom-nav">
+  <button class="nav-tab active" data-view="my">晚 风</button>
+  <button class="nav-tab" data-view="discover">发 现</button>
+</div>
+
 <script>
 // ═══════════════════════════════════════
 //  晚风 · 图文日记 PWA
@@ -1203,10 +1208,5 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (!showCalendar) render(searchEl.value); }, 200);
 });
 </script>
-<div class="bottom-nav" id="bottom-nav">
-  <button class="nav-tab active" data-view="my">晚 风</button>
-  <button class="nav-tab" data-view="discover">发 现</button>
-</div>
-
 </body>
 </html>

@@ -190,12 +190,21 @@ async function renderAdminPanel(panel) {
       try {
         const result = await adminApiFetch('/admin/keys', { method: 'POST', body: JSON.stringify({ label }) });
         const resultEl = panel.querySelector('#new-key-result');
-        resultEl.innerHTML = `<div style="background:var(--accent-dim);padding:10px;border-radius:8px;border:1px solid var(--accent)">
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">新 Key（仅显示一次，请立即复制！）</div>
-          <div style="font-size:12px;word-break:break-all;color:var(--accent);cursor:pointer" id="copy-key">${esc(result.apikey)}</div>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:4px">标签：${esc(result.label)}</div></div>`;
-        resultEl.querySelector('#copy-key').addEventListener('click', function() {
-          navigator.clipboard.writeText(this.textContent).then(() => toast('已复制 ✓'));
+        resultEl.innerHTML = `<div style="background:var(--accent-dim);padding:14px;border-radius:10px;border:1px solid var(--accent)">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">🔑 新 Key（仅显示一次，请立即复制！）</div>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <code id="copy-key" style="flex:1;background:var(--bg);padding:10px 14px;border-radius:8px;font-size:12px;word-break:break-all;color:var(--accent);font-family:monospace;border:1px solid var(--border);line-height:1.6;user-select:all">\${esc(result.apikey)}</code>
+            <button id="btn-copy-key" style="flex-shrink:0;background:var(--accent);color:#141414;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;transition:all .2s">📋 复制</button>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:8px">标签：\${esc(result.label)}</div></div>`;
+        resultEl.querySelector('#btn-copy-key').addEventListener('click', function() {
+          const keyText = resultEl.querySelector('#copy-key').textContent;
+          navigator.clipboard.writeText(keyText).then(() => {
+            this.textContent = '✅ 已复制';
+            this.style.background = '#4caf50';
+            setTimeout(() => { this.textContent = '📋 复制'; this.style.background = ''; }, 2000);
+            toast('已复制到剪贴板 ✓');
+          });
         });
         panel.querySelector('#new-key-label').value = '';
         renderAdminPanel(panel);

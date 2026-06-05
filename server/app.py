@@ -3,6 +3,7 @@
 Flask + SQLite，极简 API
 """
 import os
+import uuid
 import sqlite3
 import secrets
 import hashlib
@@ -17,6 +18,10 @@ app = Flask(__name__)
 DB_DIR = Path(os.environ.get("WANFENG_DATA_DIR", "/var/lib/wanfeng"))
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "notes.db"
+
+# ── 上传目录 ──
+UPLOAD_DIR = Path(os.environ.get("WANFENG_UPLOAD_DIR", "/var/www/wanfeng/uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── API Key 管理 ──
 KEY_FILE = DB_DIR / ".apikey"
@@ -91,7 +96,6 @@ def init_db():
     # 没有管理员则创建
     admin_exists = db.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1").fetchone()
     if not admin_exists:
-        import uuid
         db.execute(
             "INSERT INTO users (id, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, 1, ?)",
             (str(uuid.uuid4()), API_KEY_HASH, "管理员", datetime.now(timezone.utc).isoformat()),
@@ -104,14 +108,54 @@ def check_auth():
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth[7:]
-        if hashlib.sha256(token.encode()).hexdigest() == API_KEY_HASH:
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        if token_hash == API_KEY_HASH:
             return True
+        # 检查用户表
+        try:
+            db = get_db()
+            row = db.execute(
+                "SELECT 1 FROM users WHERE apikey_hash = ? AND revoked = 0",
+                (token_hash,)
+            ).fetchone()
+            if row:
+                return True
+        except Exception:
+            pass
     return False
 
 
 def require_auth():
     if not check_auth():
         return jsonify({"error": "unauthorized"}), 401
+    return None
+
+
+def is_admin():
+    """当前请求是否为管理员"""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    if token_hash == API_KEY_HASH:
+        return True
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT is_admin FROM users WHERE apikey_hash = ? AND revoked = 0",
+            (token_hash,)
+        ).fetchone()
+        return bool(row and row["is_admin"])
+    except Exception:
+        return False
+
+
+def require_admin():
+    if not check_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    if not is_admin():
+        return jsonify({"error": "admin required"}), 403
     return None
 
 
@@ -123,11 +167,23 @@ def health():
 
 @app.route("/api/auth/verify", methods=["POST"])
 def verify_auth():
-    """验证 API key，返回是否有效"""
+    """验证 API key"""
     data = request.get_json(silent=True) or {}
     token = data.get("key", "")
-    if token == API_KEY:
-        return jsonify({"valid": True, "token": API_KEY_HASH})
+    if not token:
+        return jsonify({"valid": False}), 401
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    # 检查主 Key
+    if token_hash == API_KEY_HASH:
+        return jsonify({"valid": True, "is_admin": True})
+    # 检查用户表
+    db = get_db()
+    row = db.execute(
+        "SELECT is_admin FROM users WHERE apikey_hash = ? AND revoked = 0",
+        (token_hash,)
+    ).fetchone()
+    if row:
+        return jsonify({"valid": True, "is_admin": bool(row["is_admin"])})
     return jsonify({"valid": False}), 401
 
 
@@ -310,6 +366,86 @@ def discover():
     notes = [note_row(r) for r in rows]
     has_more = len(notes) >= limit if limit > 0 else False
     return jsonify({"notes": notes, "has_more": has_more, "authenticated": check_auth()})
+
+# ── 图片上传 ──
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route("/api/upload", methods=["POST"])
+def upload_file():
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    if 'file' not in request.files:
+        return jsonify({"error": "no file"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "empty filename"}), 400
+    if not allowed_file(file.filename):
+        return jsonify({"error": "unsupported file type"}), 400
+    # 生成唯一文件名
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    file.save(str(UPLOAD_DIR / filename))
+    return jsonify({"filename": filename, "url": f"/uploads/{filename}"}), 201
+
+# ── Admin: Key 管理 ──
+@app.route("/api/admin/keys", methods=["GET"])
+def list_keys():
+    admin_err = require_admin()
+    if admin_err:
+        return admin_err
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, apikey_hash, label, is_admin, created_at, revoked FROM users ORDER BY created_at DESC"
+    ).fetchall()
+    keys = []
+    for r in rows:
+        keys.append({
+            "id": r["id"],
+            "key_preview": r["apikey_hash"][:8] + "…",
+            "label": r["label"],
+            "is_admin": bool(r["is_admin"]),
+            "created_at": r["created_at"],
+            "revoked": bool(r["revoked"]),
+        })
+    return jsonify({"keys": keys})
+
+@app.route("/api/admin/keys", methods=["POST"])
+def create_key():
+    admin_err = require_admin()
+    if admin_err:
+        return admin_err
+    data = request.get_json(silent=True) or {}
+    label = (data.get("label", "") or "").strip() or "用户"
+    new_key = secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(new_key.encode()).hexdigest()
+    key_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_db()
+    db.execute(
+        "INSERT INTO users (id, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, 0, ?)",
+        (key_id, key_hash, label, now),
+    )
+    db.commit()
+    return jsonify({
+        "id": key_id,
+        "apikey": new_key,
+        "label": label,
+        "key_preview": key_hash[:8] + "…",
+    }), 201
+
+@app.route("/api/admin/keys/<key_id>", methods=["DELETE"])
+def revoke_key(key_id):
+    admin_err = require_admin()
+    if admin_err:
+        return admin_err
+    db = get_db()
+    db.execute("UPDATE users SET revoked = 1 WHERE id = ? AND is_admin = 0", (key_id,))
+    db.commit()
+    return jsonify({"revoked": key_id})
 
 # ── 分组 ──
 @app.route("/api/groups", methods=["GET"])

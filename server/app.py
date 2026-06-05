@@ -97,8 +97,8 @@ def init_db():
     admin_exists = db.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1").fetchone()
     if not admin_exists:
         db.execute(
-            "INSERT INTO users (id, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, 1, ?)",
-            (str(uuid.uuid4()), API_KEY_HASH, "管理员", datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO users (id, apikey, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, ?, 1, ?)",
+            (str(uuid.uuid4()), "", API_KEY_HASH, "管理员", datetime.now(timezone.utc).isoformat()),
         )
     db.commit()
     db.close()
@@ -426,8 +426,8 @@ def create_key():
     now = datetime.now(timezone.utc).isoformat()
     db = get_db()
     db.execute(
-        "INSERT INTO users (id, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, 0, ?)",
-        (key_id, key_hash, label, now),
+        "INSERT INTO users (id, apikey, apikey_hash, label, is_admin, created_at) VALUES (?, ?, ?, ?, 0, ?)",
+        (key_id, "", key_hash, label, now),
     )
     db.commit()
     return jsonify({

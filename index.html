@@ -348,7 +348,7 @@
 <nav class="bottom-nav" id="bottom-nav">
   <div class="nav-tabs-inner">
     <button class="nav-tab active" data-view="my">晚 风</button>
-    <button class="nav-tab" data-view="discover">发 现</button>
+    <button class="nav-tab" data-view="discover">微 光</button>
   </div>
 </nav>
 
@@ -530,14 +530,14 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
 });
 
 async function loadDiscover() {
-  discoverList.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="hint">加载中…</div></div>';
+  discoverList.innerHTML = '<div class="empty-state"><div class="icon">🕯️</div><div class="hint">灯火渐明…</div></div>';
   try {
     const headers = {};
     if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
     const res = await fetch(API_BASE + '/discover', { headers });
     const data = await res.json();
     if (!data.notes || data.notes.length === 0) {
-      discoverList.innerHTML = '<div class="empty-state"><div class="icon">🌙</div><div class="hint">还没有人分享笔记</div></div>';
+      discoverList.innerHTML = '<div class="empty-state"><div class="icon">🌙</div><div class="hint">还没有人点亮微光</div></div>';
       discoverFooter.textContent = '';
       return;
     }
@@ -557,9 +557,9 @@ async function loadDiscover() {
         '</div>';
     }
     discoverList.innerHTML = html;
-    discoverFooter.textContent = data.authenticated ? '已连接 · 全部分享可见' : (data.has_more ? '连接服务器查看更多…' : '未连接 · 仅显示最近 10 条');
+    discoverFooter.textContent = data.authenticated ? '已连接 · 万家灯火' : (data.has_more ? '连接后望见更多灯火' : '未连接 · 只能望见最近的灯火');
   } catch (e) {
-    discoverList.innerHTML = '<div class="empty-state"><div class="icon">💫</div><div class="hint">加载失败</div></div>';
+    discoverList.innerHTML = '<div class="empty-state"><div class="icon">💫</div><div class="hint">灯火暂熄</div></div>';
     discoverFooter.textContent = '';
   }
 }

@@ -1,7 +1,7 @@
 // 晚风 · Service Worker
 // 缓存核心资源，支持离线访问
 
-const CACHE_NAME = 'wanfeng-v10';
+const CACHE_NAME = 'wanfeng-v11';
 
 const ASSETS = [
   '.',

@@ -48,9 +48,12 @@ searchEl.addEventListener('input', () => render(searchEl.value));
 applyBackground();
 load();
 
-// 窗口缩放时重排瀑布流
+// 窗口缩放时重排瀑布流（仅在晚风页生效）
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (!showCalendar) render(searchEl.value); }, 200);
+  resizeTimer = setTimeout(() => {
+    if (currentView === 'discover') return;  // 拾光页不触发重排
+    if (!showCalendar) render(searchEl.value);
+  }, 200);
 });

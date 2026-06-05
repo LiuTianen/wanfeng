@@ -293,8 +293,10 @@
       .empty-state { min-height: 50vh; display: flex; align-items: center; justify-content: center; }
       .card-images img { width: 100px; height: 100px; }
       #calendar-view { padding: 20px 24px 0; max-width: 700px; align-self: center; width: 100%; }
+      #discover-view { max-width: 640px; align-self: center; width: 100%; padding: 20px 24px 40px; }
     }
     @media (min-width: 900px) {
       #list { padding: 24px 32px 48px; }
       #calendar-view { padding: 24px 32px 0; max-width: 700px; align-self: center; width: 100%; }
+      #discover-view { max-width: 640px; align-self: center; width: 100%; padding: 24px 32px 48px; }
     }

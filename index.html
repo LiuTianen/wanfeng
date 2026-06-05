@@ -290,14 +290,12 @@
     }
     @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
     @keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
-
-    /* ── Bottom Bar ── */
-    .bottom-bar {
-      flex-shrink: 0; display: flex; gap: 16px; justify-content: center;
-      padding: 8px 20px calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--bg);
-    }
-    .bottom-bar button { background: none; border: none; color: var(--text-muted); font-size: 12px; font-family: var(--font); cursor: pointer; letter-spacing: .5px; transition: color .2s; }
-    .bottom-bar button:hover { color: var(--accent); }
+/* ── Bottom Tab Nav ── */
+    .bottom-nav { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--bg); }
+    .nav-tabs-inner { display: flex; gap: 4px; background: var(--surface); border-radius: 14px; padding: 3px; border: 1px solid var(--border); }
+    .nav-tab { font-family: var(--serif); font-size: 14px; color: var(--text-muted); cursor: pointer; padding: 8px 24px; border-radius: 12px; transition: all .2s; letter-spacing: 2px; user-select: none; background: none; border: none; min-width: 80px; text-align: center; }
+    .nav-tab.active { color: var(--accent); background: var(--accent-dim); }
+    .nav-tab:hover:not(.active) { color: var(--text); }
     #import-file { display: none; }
 
     @media (min-width: 600px) {

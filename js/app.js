@@ -1,0 +1,56 @@
+// ── 晚风 · 应用入口 ──
+
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const view = tab.dataset.view;
+    if (view === currentView) return;
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentView = view;
+    const groupBar = document.getElementById('group-bar');
+    if (view === 'discover') {
+      listEl.classList.add('hidden');
+      if (calView) calView.classList.add('hidden-view');
+      searchWrap.style.display = 'none';
+      if (groupBar) groupBar.style.display = 'none';
+      headerBtns.style.display = 'none';
+      discoverView.style.display = 'flex';
+      loadDiscover();
+    } else {
+      listEl.classList.remove('hidden');
+      if (calView) calView.classList.remove('hidden-view');
+      searchWrap.style.display = '';
+      if (groupBar) groupBar.style.display = '';
+      headerBtns.style.display = '';
+      discoverView.style.display = 'none';
+      render(searchEl.value);
+    }
+  });
+});
+
+document.getElementById('btn-conn').addEventListener('click', promptConnection);
+document.getElementById('btn-settings').addEventListener('click', promptSettings);
+
+/* ── 新建笔记 ── */
+document.getElementById('btn-add').addEventListener('click', () => openEditor());
+
+/* ── 搜索 ── */
+// collapsible search
+const searchWrap = document.querySelector('.search-wrap');
+document.getElementById('btn-search').addEventListener('click', () => {
+  const open = searchWrap.classList.toggle('open');
+  if (open) { searchEl.focus(); }
+  else { searchEl.value = ''; render(); }
+});
+searchEl.addEventListener('input', () => render(searchEl.value));
+
+/* ── 启动 ── */
+applyBackground();
+load();
+
+// 窗口缩放时重排瀑布流
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (!showCalendar) render(searchEl.value); }, 200);
+});

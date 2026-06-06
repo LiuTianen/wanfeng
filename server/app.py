@@ -9,6 +9,7 @@ import secrets
 import hashlib
 import json
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -385,6 +386,10 @@ def discover():
 # ── 图片上传 ──
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'dng', 'heic', 'heif', 'tiff', 'tif'}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB
+# 需要转换的原始格式（浏览器无法直接显示）
+RAW_EXTENSIONS = {'dng', 'heic', 'heif', 'tiff', 'tif'}
+# 原始文件存档目录
+ORIGINAL_DIR = UPLOAD_DIR / "originals"
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -414,18 +419,57 @@ def upload_file():
         log.warning("上传失败：文件过大 %d bytes (上限 %d)", size, MAX_UPLOAD_SIZE)
         return jsonify({"error": f"file too large ({size} bytes, max {MAX_UPLOAD_SIZE})"}), 413
 
-    # 生成唯一文件名
     ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    dest = str(UPLOAD_DIR / filename)
+    uid = uuid.uuid4().hex
+    raw_filename = f"{uid}.{ext}"
+
+    # 保存原始文件
+    ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
+    raw_dest = str(ORIGINAL_DIR / raw_filename)
     try:
-        file.save(dest)
-        log.info("上传成功 %s (%d bytes) → %s", file.filename, size, filename)
+        file.save(raw_dest)
     except Exception as e:
         log.error("上传失败：保存文件出错 %s", e)
         return jsonify({"error": "save failed"}), 500
 
-    return jsonify({"filename": filename, "url": f"/uploads/{filename}"}), 201
+    # 如果是 RAW 格式，转换为 JPEG
+    if ext in RAW_EXTENSIONS:
+        display_filename = f"{uid}.jpg"
+        display_dest = str(UPLOAD_DIR / display_filename)
+        try:
+            result = subprocess.run(
+                ['convert', raw_dest, '-auto-orient', '-resize', '1920x1920>',
+                 '-quality', '92', display_dest],
+                capture_output=True, text=True, timeout=60
+            )
+            if result.returncode != 0:
+                log.error("格式转换失败 %s: %s", raw_filename, result.stderr.strip())
+                return jsonify({"error": "conversion failed"}), 500
+            log.info("上传成功 %s (%d bytes) → %s (转JPEG)", file.filename, size, display_filename)
+        except subprocess.TimeoutExpired:
+            log.error("格式转换超时 %s", raw_filename)
+            return jsonify({"error": "conversion timeout"}), 500
+        except Exception as e:
+            log.error("格式转换异常 %s: %s", raw_filename, e)
+            return jsonify({"error": "conversion error"}), 500
+    else:
+        # Web 格式直接可用
+        display_filename = raw_filename
+        display_dest = str(UPLOAD_DIR / display_filename)
+        try:
+            os.rename(raw_dest, display_dest)
+        except OSError:
+            import shutil
+            shutil.copy2(raw_dest, display_dest)
+        log.info("上传成功 %s (%d bytes) → %s", file.filename, size, display_filename)
+
+    return jsonify({
+        "filename": display_filename,
+        "url": f"/uploads/{display_filename}",
+        "size": size,
+        "converted": ext in RAW_EXTENSIONS,
+        "original_ext": ext if ext in RAW_EXTENSIONS else None,
+    }), 201
 
 # ── Admin: Key 管理 ──
 @app.route("/api/admin/keys", methods=["GET"])

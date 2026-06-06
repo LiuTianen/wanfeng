@@ -18,7 +18,7 @@ function mergeNotes(serverNotes, localNotes) {
   for (const n of localNotes) map.set(n.id, n);
   for (const n of serverNotes) map.set(n.id, {
     id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
-    images: n.images || [], ts: n.ts || Date.now()
+    images: (n.images && n.images.length) ? n.images : (local ? (local.images || []) : []), ts: n.ts || Date.now()
   });
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
 }

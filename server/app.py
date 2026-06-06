@@ -214,18 +214,18 @@ def list_notes():
     tag = request.args.get("tag", "")
     if group:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
             (group,)
         ).fetchall()
     elif tag:
         # 标签筛选用 LIKE 匹配 JSON 数组中的标签名
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
+            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
             (f'%"{tag}"%',)
         ).fetchall()
     else:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
         ).fetchall()
 
     notes = []
@@ -253,13 +253,16 @@ def create_note():
     tags = data.get("tags", [])
     if not isinstance(tags, list): tags = []
     tags_json = json.dumps([t.strip() for t in tags if isinstance(t, str) and t.strip()])
+    images = data.get("images", [])
+    if not isinstance(images, list): images = []
+    images_json = json.dumps(images)
     note_id = data.get("id") or gen_id()
     now = utcnow()
 
     db = get_db()
     db.execute(
-        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (note_id, body, title, group, tags_json, 1 if data.get("shared") else 0, now, now),
+        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (note_id, body, title, group, tags_json, images_json, 1 if data.get("shared") else 0, now, now),
     )
     db.commit()
 
@@ -288,19 +291,22 @@ def update_note(note_id):
     tags = data.get("tags", [])
     if not isinstance(tags, list): tags = []
     tags_json = json.dumps([t.strip() for t in tags if isinstance(t, str) and t.strip()])
+    images = data.get("images", [])
+    if not isinstance(images, list): images = []
+    images_json = json.dumps(images)
     now = utcnow()
     db = get_db()
 
     row = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
     if row:
         db.execute(
-            "UPDATE notes SET body = ?, title = ?, \"group\" = ?, tags = ?, shared = ?, updated_at = ? WHERE id = ?",
-            (body, title, group, tags_json, 1 if data.get("shared") else 0, now, note_id),
+            "UPDATE notes SET body = ?, title = ?, \"group\" = ?, tags = ?, images = ?, shared = ?, updated_at = ? WHERE id = ?",
+            (body, title, group, tags_json, images_json, 1 if data.get("shared") else 0, now, note_id),
         )
     else:
         db.execute(
-            "INSERT INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (note_id, body, title, group, tags_json, 1 if data.get("shared") else 0, now, now),
+            "INSERT INTO notes (id, body, title, \"group\", tags, images, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, images_json, 1 if data.get("shared") else 0, now, now),
         )
     db.commit()
 
@@ -346,11 +352,14 @@ def sync_notes():
         tags = note.get("tags", [])
         if not isinstance(tags, list): tags = []
         tags_json = json.dumps([t.strip() for t in tags if isinstance(t, str) and t.strip()])
+        images = note.get("images", [])
+        if not isinstance(images, list): images = []
+        images_json = json.dumps(images)
         created = note.get("created_at", now)
         title = (note.get("title", "") or "").strip()
         db.execute(
-            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (note_id, body, title, group, tags_json, 1 if note.get("shared") else 0, created, now),
+            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, images_json, 1 if note.get("shared") else 0, created, now),
         )
         upserted += 1
 
@@ -358,7 +367,7 @@ def sync_notes():
 
     # 返回合并后的全部笔记
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+        "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
     ).fetchall()
     all_notes = [note_row(r) for r in rows]
 
@@ -375,7 +384,7 @@ def discover():
     if check_auth():
         limit = -1  # SQLite: -1 = no limit
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, shared, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY updated_at DESC" +
+        "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY updated_at DESC" +
         (" LIMIT ?" if limit > 0 else ""),
         (limit,) if limit > 0 else ()
     ).fetchall()
@@ -576,6 +585,7 @@ def note_row(r):
         "title": r["title"] or "",
         "group": r["group"] or "",
         "tags": json.loads(r["tags"] or "[]"),
+        "images": json.loads(r["images"] or "[]"),
         "ts": iso_to_ts(r["updated_at"]),
         "created_at": r["created_at"],
         "shared": bool(r["shared"]),

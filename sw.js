@@ -1,7 +1,7 @@
 // 晚风 · Service Worker
-// 缓存核心资源，支持离线访问
+// 分路由缓存策略：API 不缓存，图片网络优先，静态资源缓存优先
 
-const CACHE_NAME = 'wanfeng-v11';
+const CACHE_NAME = 'wanfeng-v12';
 
 const ASSETS = [
   '.',
@@ -26,6 +26,28 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // ── API 请求：只用网络，绝不缓存 ──
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // ── 上传的图片：网络优先，离线时用缓存 ──
+  if (url.pathname.startsWith('/uploads/')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        // 成功后更新缓存
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // ── 静态资源：缓存优先 ──
   event.respondWith(
     caches.match(event.request).then(cached => {
       const fetchPromise = fetch(event.request).then(response => {

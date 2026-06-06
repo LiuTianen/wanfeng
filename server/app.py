@@ -8,12 +8,27 @@ import sqlite3
 import secrets
 import hashlib
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
 from flask import Flask, request, jsonify, g
 
 app = Flask(__name__)
+
+# ── 日志 ──
+LOG_DIR = Path(os.environ.get("WANFENG_LOG_DIR", "/var/log/wanfeng"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_DIR / "app.log"),
+        logging.StreamHandler(),  # stderr → journalctl
+    ]
+)
+log = logging.getLogger(__name__)
+log.info("晚风服务启动")
 
 DB_DIR = Path(os.environ.get("WANFENG_DATA_DIR", "/var/lib/wanfeng"))
 DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -368,7 +383,8 @@ def discover():
     return jsonify({"notes": notes, "has_more": has_more, "authenticated": check_auth()})
 
 # ── 图片上传 ──
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'dng', 'heic', 'heif', 'tiff', 'tif'}
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -377,18 +393,38 @@ def allowed_file(filename):
 def upload_file():
     auth_err = require_auth()
     if auth_err:
+        log.warning("上传失败：未认证")
         return auth_err
     if 'file' not in request.files:
+        log.warning("上传失败：请求中无 file 字段")
         return jsonify({"error": "no file"}), 400
     file = request.files['file']
     if file.filename == '':
+        log.warning("上传失败：空文件名")
         return jsonify({"error": "empty filename"}), 400
     if not allowed_file(file.filename):
+        log.warning("上传失败：不支持的文件类型 %s", file.filename)
         return jsonify({"error": "unsupported file type"}), 400
+
+    # 检查文件大小
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_UPLOAD_SIZE:
+        log.warning("上传失败：文件过大 %d bytes (上限 %d)", size, MAX_UPLOAD_SIZE)
+        return jsonify({"error": f"file too large ({size} bytes, max {MAX_UPLOAD_SIZE})"}), 413
+
     # 生成唯一文件名
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"{uuid.uuid4().hex}.{ext}"
-    file.save(str(UPLOAD_DIR / filename))
+    dest = str(UPLOAD_DIR / filename)
+    try:
+        file.save(dest)
+        log.info("上传成功 %s (%d bytes) → %s", file.filename, size, filename)
+    except Exception as e:
+        log.error("上传失败：保存文件出错 %s", e)
+        return jsonify({"error": "save failed"}), 500
+
     return jsonify({"filename": filename, "url": f"/uploads/{filename}"}), 201
 
 # ── Admin: Key 管理 ──
@@ -479,6 +515,13 @@ def list_tags():
         except: pass
     result = sorted([{"name": k, "count": v} for k, v in tag_counts.items()], key=lambda x: -x["count"])
     return jsonify({"tags": result})
+
+
+# ── 全局错误处理 ──
+@app.errorhandler(Exception)
+def handle_exception(e):
+    log.error("未捕获异常: %s", e, exc_info=True)
+    return jsonify({"error": "internal server error"}), 500
 
 
 # ── 工具 ──

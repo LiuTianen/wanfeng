@@ -66,7 +66,10 @@ function openEditor(id = null) {
       item.addEventListener('mousedown', e => { e.preventDefault(); groupInput.value = item.textContent; groupDropdown.classList.remove('show'); });
     });
   }
-  groupInput.addEventListener('focus', () => populateGroupDropdown());
+  groupInput.addEventListener('focus', async () => {
+    if (groups.length === 0) { await fetchGroups(); }
+    populateGroupDropdown();
+  });
   groupInput.addEventListener('input', () => {
     const val = groupInput.value.toLowerCase();
     groupDropdown.querySelectorAll('.group-dropdown-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(val) ? '' : 'none'; });

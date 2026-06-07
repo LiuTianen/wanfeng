@@ -3,14 +3,26 @@
 async function load() {
   try { notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); notes.sort((a,b) => b.ts - a.ts); } catch { notes = []; }
   render();
-  updateStatus();
-  const key = getApiKey(); if (!key) return;
+  updateStatus('local');
+  const key = getApiKey(); if (!key) { updateStatus('local'); return; }
+  updateStatus(); // 显示连接中（无参数 = local 样式）
   try {
     const data = await apiFetch('/notes');
     notes = mergeNotes(data.notes || [], notes);
     saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
   } catch (e) {
-    if (e.message === 'unauthorized') updateStatus('unauth'); else updateStatus('offline');
+    if (e.message === 'unauthorized') { updateStatus('unauth'); return; }
+    // SW 缓存可能返回旧错误 — 3秒后重试一次
+    setTimeout(async () => {
+      try {
+        const data = await apiFetch('/notes');
+        notes = mergeNotes(data.notes || [], notes);
+        saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
+      } catch (e2) {
+        updateStatus('offline');
+      }
+    }, 3000);
+    updateStatus('offline');
   }
 }
 function mergeNotes(serverNotes, localNotes) {

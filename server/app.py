@@ -17,6 +17,15 @@ from flask import Flask, request, jsonify, g
 
 app = Flask(__name__)
 
+# ── 强制 API 响应不可缓存 ──
+@app.after_request
+def no_cache_api(response):
+    if request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # ── 日志 ──
 LOG_DIR = Path(os.environ.get("WANFENG_LOG_DIR", "/var/log/wanfeng"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)

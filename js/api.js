@@ -14,7 +14,12 @@ async function apiFetch(path, opts = {}) {
   if (!(opts.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  const res = await fetch(API_BASE + path, { ...opts, headers });
+    // 给 GET 请求加时间戳防止缓存
+  let url = API_BASE + path;
+  if (!opts.method || opts.method === 'GET') {
+    url += (path.includes('?') ? '&' : '?') + '_t=' + Date.now();
+  }
+  const res = await fetch(url, { ...opts, headers });
   if (res.status === 401) { apiKey = null; localStorage.removeItem(API_KEY_STORAGE); throw new Error('unauthorized'); }
   if (!res.ok) throw new Error('API error: ' + res.status);
   return res.json();
@@ -36,7 +41,12 @@ async function uploadImage(file) {
 async function adminApiFetch(path, opts = {}) {
   const k = getApiKey();
   const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k };
-  const res = await fetch(API_BASE + path, { ...opts, headers });
+    // 给 GET 请求加时间戳防止缓存
+  let url = API_BASE + path;
+  if (!opts.method || opts.method === 'GET') {
+    url += (path.includes('?') ? '&' : '?') + '_t=' + Date.now();
+  }
+  const res = await fetch(url, { ...opts, headers });
   if (!res.ok) throw new Error('Admin API error: ' + res.status);
   return res.json();
 }

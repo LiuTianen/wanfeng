@@ -1,11 +1,27 @@
 // ── 晚风 · 应用入口 ──
 
-// ── 注册 Service Worker ──
+// ── 注册 Service Worker（自修复版）──
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    window.location.reload();
-  });
+  async function initSW() {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      // 已有 SW — 强制检查更新
+      await reg.update();
+      // 如果不是最新版，等新 SW 激活后刷新
+      if (reg.waiting) {
+        reg.waiting.postMessage('skip-waiting');
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        });
+      }
+    }
+    // 注册（或重新注册）
+    navigator.serviceWorker.register('/sw.js?v=v12').catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+  }
+  initSW();
 }
 
 document.querySelectorAll('.nav-tab').forEach(tab => {

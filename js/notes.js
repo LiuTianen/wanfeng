@@ -11,15 +11,20 @@ async function load() {
     notes = mergeNotes(data.notes || [], notes);
     saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
   } catch (e) {
-    if (e.message === 'unauthorized') { updateStatus('unauth'); return; }
+    console.error('load failed:', e.message || e);
+    if (e.message === 'unauthorized') { updateStatus('unauth'); toast('密钥无效'); return; }
+    toast('连接失败: ' + (e.message || e));
     // SW 缓存可能返回旧错误 — 3秒后重试一次
     setTimeout(async () => {
       try {
         const data = await apiFetch('/notes');
         notes = mergeNotes(data.notes || [], notes);
         saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
+        toast('已连接');
       } catch (e2) {
+        console.error('retry failed:', e2.message || e2);
         updateStatus('offline');
+        toast('重试失败: ' + (e2.message || e2));
       }
     }, 3000);
     updateStatus('offline');

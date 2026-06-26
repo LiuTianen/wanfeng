@@ -33,11 +33,14 @@ async function load() {
 function mergeNotes(serverNotes, localNotes) {
   const map = new Map();
   for (const n of localNotes) map.set(n.id, n);
-  for (const n of serverNotes) map.set(n.id, {
-    id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
-    images: (n.images && n.images.length) ? n.images : (local ? (local.images || []) : []), ts: n.ts || Date.now(),
-    pinned: n.pinned || false, pinned_at: n.pinned_at || null
-  });
+  for (const n of serverNotes) {
+    const localNote = map.get(n.id);
+    map.set(n.id, {
+      id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
+      images: (n.images && n.images.length) ? n.images : (localNote ? (localNote.images || []) : []), ts: n.ts || Date.now(),
+      pinned: n.pinned || false, pinned_at: n.pinned_at || null
+    });
+  }
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
 }
 function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }

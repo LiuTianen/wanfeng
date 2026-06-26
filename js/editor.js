@@ -161,29 +161,16 @@ function openEditor(id = null) {
   let vvHandler = null;
   const origBodyHeight = document.body.style.height || '';
   const origBodyOverflow = document.body.style.overflow || '';
-  const editorEl = overlay.querySelector('.editor');
   if (window.visualViewport) {
     vvHandler = () => {
       const vh = window.visualViewport.height;
-      const keyboardUp = vh < window.innerHeight - 80;
-      if (keyboardUp) {
-        // 锁定 body 到可视区域，防止底部空白
+      if (vh < window.innerHeight - 80) {
         document.body.style.height = vh + 'px';
         document.body.style.overflow = 'hidden';
-        // overlay 填满可视区，editor 下对齐让键盘推起时内容可见
-        overlay.style.height = vh + 'px';
-        overlay.style.overflow = 'hidden';
-        overlay.style.alignItems = 'flex-end';
-        overlay.style.padding = '0';
-        // editor 填满可用空间
-        editorEl.style.maxHeight = '100%';
-        editorEl.style.borderRadius = '12px 12px 0 0';
         textarea.scrollIntoView({ block: 'nearest' });
       }
     };
     window.visualViewport.addEventListener('resize', vvHandler);
-    // 初始触发一次（打开时键盘可能已在上方）
-    vvHandler();
   }
 
   const close = () => {

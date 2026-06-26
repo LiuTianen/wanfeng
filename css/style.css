@@ -136,6 +136,9 @@
     .card-images img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: all .2s; }
     .card-images img:hover { border-color: var(--accent); transform: scale(1.03); }
     .card .expand-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; cursor: pointer; }
+    .card .card-footer { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+    .card .body.expanded ~ .card-footer,
+    .card .body.short ~ .card-footer { display: block; }
 
     @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -211,7 +214,7 @@
       padding: 14px 16px; resize: none; outline: none; transition: border-color .2s;
     }
     .editor textarea:focus { border-color: var(--accent); }
-    .editor textarea#note-body { flex: 1 1 0; min-height: 80px; }
+    .editor textarea#note-body { flex: 1; min-height: 140px; }
     .editor .group-input-row, .editor .tag-input-row { display: flex; align-items: center; gap: 8px; }
     .editor .group-input-row label, .editor .tag-input-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .editor .group-input-row input, .editor .tag-input-row input {

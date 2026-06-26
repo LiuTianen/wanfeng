@@ -38,10 +38,10 @@ function mergeNotes(serverNotes, localNotes) {
     map.set(n.id, {
       id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
       images: (n.images && n.images.length) ? n.images : (localNote ? (localNote.images || []) : []), ts: n.ts || Date.now(),
-      created_ts: n.created_ts || n.ts || Date.now(), pinned: n.pinned || false, pinned_at: n.pinned_at || null
+      created_ts: n.created_ts || n.ts || Date.now(), updated_at: n.updated_at, pinned: n.pinned || false, pinned_at: n.pinned_at || null
     });
   }
-  return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
+  return Array.from(map.values()).sort((a, b) => (b.created_ts || b.ts) - (a.created_ts || a.ts));
 }
 function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }
 async function fetchGroups() {
@@ -191,18 +191,29 @@ function render(filter = '') {
 }
 function buildCardHTML(n) {
   const date = new Date(n.created_ts || n.ts);
-  const timeStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
+  const dateStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' });
   const isLong = n.body.length > 200;
   const imgs = n.images || [];
   const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
   const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
   const pinnedClass = n.pinned ? ' pinned' : '';
+  // 格式化完整时间（ISO → 中文可读）
+  function fmtISO(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2,'0');
+    return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  const createdFull = fmtISO(n.created_at);
+  const updatedFull = n.updated_at && n.updated_at !== n.created_at ? fmtISO(n.updated_at) : '';
   return `<div class="card${pinnedClass}" data-id="${n.id}">
-      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${timeStr}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
+      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
       ${n.title ? '<div class="title">'+esc(n.title)+(n.shared ? ' <span style="font-size:10px;opacity:.6;font-weight:400">🌐</span>' : '')+'</div>' : ''}
       <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
       ${imgHtml}
       ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
+      <div class="card-footer">${createdFull ? '创建于 '+createdFull : ''}${updatedFull ? ' · 更新于 '+updatedFull : ''}</div>
     </div>`;
 }

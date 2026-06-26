@@ -38,7 +38,7 @@ function mergeNotes(serverNotes, localNotes) {
     map.set(n.id, {
       id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
       images: (n.images && n.images.length) ? n.images : (localNote ? (localNote.images || []) : []), ts: n.ts || Date.now(),
-      pinned: n.pinned || false, pinned_at: n.pinned_at || null
+      created_ts: n.created_ts || n.ts || Date.now(), pinned: n.pinned || false, pinned_at: n.pinned_at || null
     });
   }
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
@@ -190,7 +190,7 @@ function render(filter = '') {
   }));
 }
 function buildCardHTML(n) {
-  const date = new Date(n.ts);
+  const date = new Date(n.created_ts || n.ts);
   const timeStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
   const isLong = n.body.length > 200;
   const imgs = n.images || [];

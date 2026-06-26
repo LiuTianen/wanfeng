@@ -231,7 +231,7 @@ def list_notes():
     group = request.args.get("group", "")
     tag = request.args.get("tag", "")
     select = 'SELECT id, body, title, "group", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes'
-    order = " ORDER BY pinned DESC, pinned_at DESC, updated_at DESC"
+    order = " ORDER BY pinned DESC, pinned_at DESC, created_at DESC"
     if group:
         rows = db.execute(
             select + ' WHERE "group" = ?' + order,
@@ -420,7 +420,7 @@ def sync_notes():
 
     # 返回合并后的全部笔记
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes ORDER BY pinned DESC, pinned_at DESC, updated_at DESC"
+        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes ORDER BY pinned DESC, pinned_at DESC, created_at DESC"
     ).fetchall()
     all_notes = [note_row(r) for r in rows]
 
@@ -437,7 +437,7 @@ def discover():
     if check_auth():
         limit = -1  # SQLite: -1 = no limit
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY pinned DESC, pinned_at DESC, updated_at DESC" +
+        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY pinned DESC, pinned_at DESC, created_at DESC" +
         (" LIMIT ?" if limit > 0 else ""),
         (limit,) if limit > 0 else ()
     ).fetchall()
@@ -640,6 +640,7 @@ def note_row(r):
         "tags": json.loads(r["tags"] or "[]"),
         "images": json.loads(r["images"] or "[]"),
         "ts": iso_to_ts(r["updated_at"]),
+        "created_ts": iso_to_ts(r["created_at"]),
         "created_at": r["created_at"],
         "shared": bool(r["shared"]),
         "updated_at": r["updated_at"],

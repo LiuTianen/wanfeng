@@ -14,7 +14,7 @@ async function loadDiscover() {
     }
     let html = '';
     for (const n of data.notes) {
-      const date = new Date(n.ts);
+      const date = new Date(n.created_ts || n.ts);
       const timeStr = date.toLocaleDateString('zh-CN', { month:'long', day:'numeric' }) + ' ' + date.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
       const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
       const imgs = n.images || [];

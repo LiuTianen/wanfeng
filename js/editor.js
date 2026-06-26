@@ -208,7 +208,7 @@ function openEditor(id = null) {
       if (n) { n.body = body; n.title = titleVal; n.group = groupVal; n.tags = tags; n.images = images; n.shared = shared; n.ts = Date.now(); }
       updateOnServer(n).catch(() => {});
     } else {
-      const newNote = { id: genId(), body, title: titleVal, group: groupVal, tags, images, shared, ts: Date.now() };
+      const newNote = { id: genId(), body, title: titleVal, group: groupVal, tags, images, shared, ts: Date.now(), created_ts: Date.now() };
       notes.unshift(newNote);
       saveToServer(newNote).catch(() => {});
     }

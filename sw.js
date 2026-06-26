@@ -1,7 +1,7 @@
 // 晚风 · Service Worker
 // 分路由缓存策略：API 不缓存，图片网络优先，静态资源缓存优先
 
-const CACHE_NAME = 'wanfeng-v12';
+const CACHE_NAME = 'wanfeng-v13';
 
 const ASSETS = [
   '.',

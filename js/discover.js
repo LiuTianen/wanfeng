@@ -20,6 +20,7 @@ async function loadDiscover() {
       const imgs = n.images || [];
       const imgHtml = imgs.length ? '<div class="dc-images">' + imgs.map(f => '<img src="/uploads/' + esc(f) + '" alt="" loading="lazy" onclick="openLightbox(\'/uploads/' + esc(f) + '\')">').join('') + '</div>' : '';
       html += '<div class="discover-card">' +
+        (n.pinned ? '<div style="font-size:11px;color:var(--accent);margin-bottom:6px">📌 置顶</div>' : '') +
         (n.title ? '<div class="dc-title">' + esc(n.title) + '</div>' : '') +
         '<div class="dc-body">' + bodyHTML + '</div>' +
         (n.tags && n.tags.length ? '<div class="card-tags" style="margin-top:8px">' + n.tags.map(t => '<span class="card-tag">' + esc(t) + '</span>').join('') + '</div>' : '') +

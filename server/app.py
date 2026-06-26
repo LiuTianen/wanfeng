@@ -105,6 +105,15 @@ def init_db():
             db.execute(f"ALTER TABLE notes ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
         except:
             pass
+    # 置顶迁移
+    try:
+        db.execute("ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+    except:
+        pass
+    try:
+        db.execute("ALTER TABLE notes ADD COLUMN pinned_at TEXT")
+    except:
+        pass
     # users 表 + 管理员种子
     db.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -221,20 +230,21 @@ def list_notes():
     db = get_db()
     group = request.args.get("group", "")
     tag = request.args.get("tag", "")
+    select = 'SELECT id, body, title, "group", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes'
+    order = " ORDER BY pinned DESC, pinned_at DESC, updated_at DESC"
     if group:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE \"group\" = ? ORDER BY updated_at DESC",
+            select + ' WHERE "group" = ?' + order,
             (group,)
         ).fetchall()
     elif tag:
-        # 标签筛选用 LIKE 匹配 JSON 数组中的标签名
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE tags LIKE ? ORDER BY updated_at DESC",
+            select + " WHERE tags LIKE ?" + order,
             (f'%"{tag}"%',)
         ).fetchall()
     else:
         rows = db.execute(
-            "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+            select + order
         ).fetchall()
 
     notes = []
@@ -270,7 +280,7 @@ def create_note():
 
     db = get_db()
     db.execute(
-        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)",
         (note_id, body, title, group, tags_json, images_json, 1 if data.get("shared") else 0, now, now),
     )
     db.commit()
@@ -337,6 +347,40 @@ def delete_note(note_id):
     return jsonify({"deleted": note_id})
 
 
+@app.route("/api/notes/<note_id>/pin", methods=["POST"])
+def pin_note(note_id):
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    db = get_db()
+    row = db.execute("SELECT id, pinned FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    if row["pinned"]:
+        return jsonify({"pinned": True, "pinned_at": None, "message": "already pinned"})
+    pinned_count = db.execute("SELECT COUNT(*) FROM notes WHERE pinned = 1").fetchone()[0]
+    if pinned_count >= 3:
+        return jsonify({"error": "最多置顶 3 条笔记"}), 400
+    now = utcnow()
+    db.execute("UPDATE notes SET pinned = 1, pinned_at = ? WHERE id = ?", (now, note_id))
+    db.commit()
+    return jsonify({"pinned": True, "pinned_at": now})
+
+
+@app.route("/api/notes/<note_id>/unpin", methods=["POST"])
+def unpin_note(note_id):
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    db = get_db()
+    row = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    db.execute("UPDATE notes SET pinned = 0, pinned_at = NULL WHERE id = ?", (note_id,))
+    db.commit()
+    return jsonify({"pinned": False})
+
+
 @app.route("/api/notes/sync", methods=["POST"])
 def sync_notes():
     """批量同步：接收客户端全部笔记，合并到服务端"""
@@ -367,8 +411,8 @@ def sync_notes():
         created = note.get("created_at", now)
         title = (note.get("title", "") or "").strip()
         db.execute(
-            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (note_id, body, title, group, tags_json, images_json, 1 if note.get("shared") else 0, created, now),
+            "INSERT OR REPLACE INTO notes (id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (note_id, body, title, group, tags_json, images_json, 1 if note.get("shared") else 0, 1 if note.get("pinned") else 0, note.get("pinned_at"), created, now),
         )
         upserted += 1
 
@@ -376,7 +420,7 @@ def sync_notes():
 
     # 返回合并后的全部笔记
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes ORDER BY updated_at DESC"
+        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes ORDER BY pinned DESC, pinned_at DESC, updated_at DESC"
     ).fetchall()
     all_notes = [note_row(r) for r in rows]
 
@@ -393,7 +437,7 @@ def discover():
     if check_auth():
         limit = -1  # SQLite: -1 = no limit
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, images, shared, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY updated_at DESC" +
+        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY pinned DESC, pinned_at DESC, updated_at DESC" +
         (" LIMIT ?" if limit > 0 else ""),
         (limit,) if limit > 0 else ()
     ).fetchall()
@@ -599,6 +643,8 @@ def note_row(r):
         "created_at": r["created_at"],
         "shared": bool(r["shared"]),
         "updated_at": r["updated_at"],
+        "pinned": bool(r["pinned"]),
+        "pinned_at": r["pinned_at"] or None,
     }
 def gen_id():
     import time, random, string

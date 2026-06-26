@@ -35,7 +35,8 @@ function mergeNotes(serverNotes, localNotes) {
   for (const n of localNotes) map.set(n.id, n);
   for (const n of serverNotes) map.set(n.id, {
     id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
-    images: (n.images && n.images.length) ? n.images : (local ? (local.images || []) : []), ts: n.ts || Date.now()
+    images: (n.images && n.images.length) ? n.images : (local ? (local.images || []) : []), ts: n.ts || Date.now(),
+    pinned: n.pinned || false, pinned_at: n.pinned_at || null
   });
   return Array.from(map.values()).sort((a, b) => b.ts - a.ts);
 }
@@ -79,6 +80,26 @@ async function updateOnServer(note) {
 async function deleteOnServer(id) {
   if (!getApiKey()) return null;
   try { return await apiFetch('/notes/' + id, { method: 'DELETE' }); } catch { return null; }
+}
+async function pinNote(id) {
+  if (!getApiKey()) return null;
+  try {
+    const res = await apiFetch('/notes/' + id + '/pin', { method: 'POST' });
+    const n = notes.find(n => n.id === id);
+    if (n) { n.pinned = true; n.pinned_at = res.pinned_at; }
+    saveLocal(); render(searchEl.value);
+    return res;
+  } catch (e) { toast('置顶失败: ' + (e.message || e)); return null; }
+}
+async function unpinNote(id) {
+  if (!getApiKey()) return null;
+  try {
+    await apiFetch('/notes/' + id + '/unpin', { method: 'POST' });
+    const n = notes.find(n => n.id === id);
+    if (n) { n.pinned = false; n.pinned_at = null; }
+    saveLocal(); render(searchEl.value);
+    return true;
+  } catch (e) { toast('取消置顶失败: ' + (e.message || e)); return null; }
 }
 function updateStatus(s) {
   const el = document.getElementById('status-dot');
@@ -146,6 +167,13 @@ function render(filter = '') {
   }));
   listEl.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openEditor(btn.dataset.id); }));
   listEl.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); deleteNote(btn.dataset.id); }));
+  listEl.querySelectorAll('.pin-btn').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const n = notes.find(n => n.id === btn.dataset.id);
+    if (!n) return;
+    if (n.pinned) unpinNote(btn.dataset.id);
+    else pinNote(btn.dataset.id);
+  }));
   listEl.querySelectorAll('.expand-hint').forEach(hint => hint.addEventListener('click', e => {
     e.stopPropagation();
     const card = listEl.querySelector(`.card[data-id="${hint.dataset.id}"]`);
@@ -165,8 +193,9 @@ function buildCardHTML(n) {
   const imgs = n.images || [];
   const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
   const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
-  return `<div class="card" data-id="${n.id}">
-      <div class="meta"><span class="time">${timeStr}</span><span class="actions"><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
+  const pinnedClass = n.pinned ? ' pinned' : '';
+  return `<div class="card${pinnedClass}" data-id="${n.id}">
+      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${timeStr}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
       ${n.title ? '<div class="title">'+esc(n.title)+(n.shared ? ' <span style="font-size:10px;opacity:.6;font-weight:400">🌐</span>' : '')+'</div>' : ''}
       <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}

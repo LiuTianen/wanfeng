@@ -16,7 +16,7 @@ if ("serviceWorker" in navigator) {
       }
     }
     // 注册（或重新注册）
-    navigator.serviceWorker.register('/sw.js?v=v12').catch(() => {});
+    navigator.serviceWorker.register('/sw.js?v=v13').catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     });

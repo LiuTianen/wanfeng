@@ -41,7 +41,11 @@ function mergeNotes(serverNotes, localNotes) {
       created_ts: n.created_ts || n.ts || Date.now(), updated_at: n.updated_at, pinned: n.pinned || false, pinned_at: n.pinned_at || null
     });
   }
-  return Array.from(map.values()).sort((a, b) => (b.created_ts || b.ts) - (a.created_ts || a.ts));
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
+  });
 }
 function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }
 async function fetchGroups() {
@@ -90,7 +94,7 @@ async function pinNote(id) {
     const res = await apiFetch('/notes/' + id + '/pin', { method: 'POST' });
     const n = notes.find(n => n.id === id);
     if (n) { n.pinned = true; n.pinned_at = res.pinned_at; }
-    saveLocal(); render(searchEl.value);
+    sortNotes(); saveLocal(); render(searchEl.value);
     return res;
   } catch (e) { toast('置顶失败: ' + (e.message || e)); return null; }
 }
@@ -100,9 +104,16 @@ async function unpinNote(id) {
     await apiFetch('/notes/' + id + '/unpin', { method: 'POST' });
     const n = notes.find(n => n.id === id);
     if (n) { n.pinned = false; n.pinned_at = null; }
-    saveLocal(); render(searchEl.value);
+    sortNotes(); saveLocal(); render(searchEl.value);
     return true;
   } catch (e) { toast('取消置顶失败: ' + (e.message || e)); return null; }
+}
+function sortNotes() {
+  notes.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
+  });
 }
 function updateStatus(s) {
   const el = document.getElementById('status-dot');
@@ -121,6 +132,13 @@ function render(filter = '') {
   else if (activeGroup) filtered = filtered.filter(n => n.group === activeGroup);
   if (activeTag) filtered = filtered.filter(n => safeTags(n.tags).includes(activeTag));
   if (q) filtered = filtered.filter(n => n.body.toLowerCase().includes(q));
+
+  // 置顶优先排序
+  filtered.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
+  });
 
   renderGroupBar();
   countEl.textContent = notes.length + ' 条';

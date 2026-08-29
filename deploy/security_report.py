@@ -73,7 +73,7 @@ def read_existing():
 def main():
     lines = load_lines()
     stats = defaultdict(lambda: {'n': 0, 'first': None, 'last': None, 't0': None, 't1': None,
-                                  'ua': set(), 'sens': 0, 'badua': 0, 'iphone': False})
+                                  'ua': set(), 'sens': 0, 'badua': 0, 'real_iphone': False})
     for line in lines:
         p = parse(line)
         if not p:
@@ -89,24 +89,29 @@ def main():
             d['t1'] = t if d['t1'] is None else max(d['t1'], t)
         if len(d['ua']) < 4:
             d['ua'].add(ua)
-        if 'iPhone' in ua or 'CFNetwork' in ua:
-            d['iphone'] = True
+        if 'iPhone' in ua:
+            d['real_iphone'] = True
         if SENS.search(req):
             d['sens'] += 1
         if BADUA.search(ua):
             d['badua'] += 1
 
-    # 识别扫描器：敏感路径 / 异常UA / 高频突发（10分钟内>=100次）
-    # 注意：不能靠「有 iPhone UA 就排除」——扫描器会伪装 CFNetwork/iPhone UA 冒充 iOS
+    # 识别扫描器（三重规则，优先级递减）
+    # 1) 敏感路径探测 = 铁证（扫描器伪装 iPhone UA 也会扫 .env/.git 等）
+    # 2) 高频突发 = 攻击特征
+    # 3) 异常 UA 且无真实 iPhone 访问（避免测试 curl 混入用户出口 IP 造成误伤）
     new_scanners = set()
     for ip, d in stats.items():
         if ip in EXCLUDE:
             continue
-        if d['sens'] > 0 or d['badua'] > 0:
+        if d['sens'] > 0:
             new_scanners.add(ip)
             continue
         # 高频突发
         if d['t0'] and d['t1'] and d['n'] >= 100 and (d['t1'] - d['t0']) <= 600:
+            new_scanners.add(ip)
+            continue
+        if d['badua'] > 0 and not d['real_iphone']:
             new_scanners.add(ip)
 
     # 合并 /24 段
@@ -120,10 +125,11 @@ def main():
 
     existing = read_existing()
     added = new_rules - existing
-    final = sorted(existing | new_rules)
+    removed = existing - new_rules
+    final = sorted(new_rules)
 
-    header = ['# 拦截恶意扫描器/爬虫 IP（自动累积更新）',
-              '# 规则：敏感路径 / 异常UA / 高频突发；已排除服务器自身与 iPhone 用户', '']
+    header = ['# 拦截恶意扫描器/爬虫 IP（全量重算，每次基于最新日志）',
+              '# 规则：敏感路径 / 异常UA / 高频突发；已排除服务器自身与真实 iPhone 用户', '']
     with open(CONF, 'w') as f:
         f.write('\n'.join(header) + '\n'.join(f'deny {r};' for r in final) + '\n')
 
@@ -148,9 +154,10 @@ def main():
     print(f"📅 分析周期：{ts_range}")
     print()
     print('━━━ 🛡 黑名单更新 ━━━')
-    print(f"现有规则：{len(existing)} 条")
+    print(f"上期规则：{len(existing)} 条")
     print(f"本期新增：{len(added)} 条")
-    print(f"累计规则：{len(final)} 条")
+    print(f"本期移除：{len(removed)} 条")
+    print(f"当前规则：{len(final)} 条")
     print(f"重载状态：{reload_msg}")
     print()
     print(f'━━━ 👥 正常访问 IP（共 {len(normal)} 个，已过滤一次性噪音）━━━')

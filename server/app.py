@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import subprocess
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -39,6 +40,22 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 log.info("晚风服务启动")
+
+# ── 访问日志：记录真实 IP + 方法 + 路径 + 状态码 + 耗时 ──
+@app.before_request
+def _start_timer():
+    g._start_time = time.time()
+
+
+@app.after_request
+def _log_access(response):
+    if request.path.startswith('/api/'):
+        ip = (request.headers.get('X-Real-IP')
+              or (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+              or request.remote_addr)
+        cost_ms = (time.time() - getattr(g, '_start_time', time.time())) * 1000
+        log.info("访问 %s %s %s → %s (%.0fms)", ip, request.method, request.path, response.status_code, cost_ms)
+    return response
 
 DB_DIR = Path(os.environ.get("WANFENG_DATA_DIR", "/var/lib/wanfeng"))
 DB_DIR.mkdir(parents=True, exist_ok=True)

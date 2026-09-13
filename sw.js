@@ -1,7 +1,7 @@
 // 晚风 · Service Worker
 // 分路由缓存策略：API 不缓存，图片网络优先，静态资源缓存优先
 
-const CACHE_NAME = 'wanfeng-v13';
+const CACHE_NAME = 'wanfeng-v15';
 
 const ASSETS = [
   '.',
@@ -34,9 +34,10 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // ── API 请求：只用网络，绝不缓存 ──
+  // ── API 请求：完全不拦截，交给浏览器原生处理 ──
+  // 关键：不能 respondWith(fetch(event.request))，否则 iOS Safari
+  // 会丢失 multipart/form-data 的 body，图片上传会 400 "no file"
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request));
     return;
   }
 

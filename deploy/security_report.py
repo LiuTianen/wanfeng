@@ -6,6 +6,8 @@ from datetime import datetime
 
 CONF = '/etc/nginx/conf.d/block-scanners.conf'
 EXCLUDE = {'120.77.9.218', '127.0.0.1'}  # 服务器自己、本机回环
+# 手动黑名单：规则难覆盖但已确认的恶意 IP（如探测 /Dr0v 等特殊路径的空 UA 扫描器）
+MANUAL_BLACKLIST = {'185.12.59.118'}
 
 SENS = re.compile(r'(\.env|\.git|\.vscode|\.svn|wp-|phpmyadmin|\.htaccess|\.DS_Store|actuator|\.aws|\.ssh|/config|/admin|php://|allow_url_include|/bin/sh|/cgi-bin|sftp|\.bak|\.backup|\.sql|\.yml|\.yaml)', re.I)
 BADUA = re.compile(r'(curl|wget|python|Go-http|nikto|sqlmap|nmap|masscan|zgrab|scanner|libredtail|l9tcpid|Exposure|Rota|MSIE [678]|libwww|Java/|okhttp|crawler|spider|facebookexternalhit|BLEXBot|Ahrefs|Semrush|DotBot|PetalBot|Bytespider|bot)', re.I)
@@ -93,6 +95,10 @@ def main():
             d['real_iphone'] = True
         if SENS.search(req):
             d['sens'] += 1
+        # 非标准方法（PROPFIND 等）或二进制垃圾请求（TLS 握手/端口探测字节）
+        method = req.split(' ', 1)[0] if req else ''
+        if method and method not in {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}:
+            d['sens'] += 1
         if BADUA.search(ua):
             d['badua'] += 1
 
@@ -100,7 +106,7 @@ def main():
     # 1) 敏感路径探测 = 铁证（扫描器伪装 iPhone UA 也会扫 .env/.git 等）
     # 2) 高频突发 = 攻击特征
     # 3) 异常 UA 且无真实 iPhone 访问（避免测试 curl 混入用户出口 IP 造成误伤）
-    new_scanners = set()
+    new_scanners = set(MANUAL_BLACKLIST)
     for ip, d in stats.items():
         if ip in EXCLUDE:
             continue

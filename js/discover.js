@@ -29,7 +29,7 @@ async function loadDiscover() {
         '</div>';
     }
     discoverList.innerHTML = html;
-    discoverFooter.textContent = data.authenticated ? '已连接 · 听见晚风' : (data.has_more ? '连接后，听见更远的风' : '未连接 · 只拾得近处的光');
+    discoverFooter.textContent = (data.authenticated ? '已连接 · 听见晚风 · ' : '拾光 · ') + data.notes.length + ' 则';
   } catch (e) {
     discoverList.innerHTML = '<div class="empty-state"><div class="icon">💫</div><div class="hint">风暂歇…</div></div>';
     discoverFooter.textContent = '';

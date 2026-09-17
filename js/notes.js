@@ -226,8 +226,8 @@ function buildCardHTML(n) {
   const createdFull = fmtISO(n.created_at);
   const updatedFull = n.updated_at && n.updated_at !== n.created_at ? fmtISO(n.updated_at) : '';
   return `<div class="card${pinnedClass}" data-id="${n.id}">
-      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
-      ${n.title ? '<div class="title">'+esc(n.title)+(n.shared ? ' <span style="font-size:10px;opacity:.6;font-weight:400">🌐</span>' : '')+'</div>' : ''}
+      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}${n.shared ? '<span class="shared-badge">🌐 公开</span>' : ''}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
+      ${n.title ? '<div class="title">'+esc(n.title)+'</div>' : ''}
       <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
       ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
       ${imgHtml}

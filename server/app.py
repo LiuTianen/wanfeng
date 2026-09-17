@@ -448,19 +448,13 @@ def sync_notes():
 # ── 发现页（公开）──
 @app.route("/api/discover", methods=["GET"])
 def discover():
-    """公开接口：浏览被分享的笔记。无认证最多 10 条，有认证无限制"""
+    """公开接口：浏览被分享的笔记。无需认证即可查看全部公开内容"""
     db = get_db()
-    limit = 10
-    if check_auth():
-        limit = -1  # SQLite: -1 = no limit
     rows = db.execute(
-        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY pinned DESC, pinned_at DESC, created_at DESC" +
-        (" LIMIT ?" if limit > 0 else ""),
-        (limit,) if limit > 0 else ()
+        "SELECT id, body, title, \"group\", tags, images, shared, pinned, pinned_at, created_at, updated_at FROM notes WHERE shared = 1 ORDER BY pinned DESC, pinned_at DESC, created_at DESC"
     ).fetchall()
     notes = [note_row(r) for r in rows]
-    has_more = len(notes) >= limit if limit > 0 else False
-    return jsonify({"notes": notes, "has_more": has_more, "authenticated": check_auth()})
+    return jsonify({"notes": notes, "has_more": False, "authenticated": check_auth()})
 
 # ── 图片上传 ──
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'dng', 'heic', 'heif', 'tiff', 'tif'}

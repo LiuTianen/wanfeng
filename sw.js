@@ -1,23 +1,24 @@
 // 晚风 · Service Worker
 // 策略：API 完全不拦截；上传图片网络优先；静态资源缓存优先 + 后台更新
 
-const CACHE_NAME = 'wanfeng-v17';
+const CACHE_NAME = 'wanfeng-v18';
 
 const PRECACHE = [
   './',
   'index.html',
   'manifest.json',
-  'css/style.css?v=17',
-  'js/utils.js?v=17',
-  'js/api.js?v=17',
-  'js/state.js?v=17',
-  'js/sync.js?v=17',
-  'js/notes.js?v=17',
-  'js/calendar.js?v=17',
-  'js/discover.js?v=17',
-  'js/editor.js?v=17',
-  'js/settings.js?v=17',
-  'js/app.js?v=17',
+  'css/style.css?v=18',
+  'js/theme-boot.js?v=18',
+  'js/utils.js?v=18',
+  'js/api.js?v=18',
+  'js/state.js?v=18',
+  'js/sync.js?v=18',
+  'js/notes.js?v=18',
+  'js/calendar.js?v=18',
+  'js/discover.js?v=18',
+  'js/editor.js?v=18',
+  'js/settings.js?v=18',
+  'js/app.js?v=18',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',

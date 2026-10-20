@@ -11,7 +11,8 @@ let showCalendar = false;
 let calYear, calMonth, calSelectedDate;
 let currentView = 'my';
 let currentKeyIsAdmin = false;
-let connState = 'local';        // local | online | offline | unauth | pending
+let connState = 'local';        // local | online | offline | unauth | pending | syncing
+let animateNext = true;         // 下一次渲染是否播放入场动画
 
 const listEl = document.getElementById('list');
 const searchEl = document.getElementById('search');

@@ -5,11 +5,13 @@ async function load() {
   const key = getApiKey();
   if (!key) { updateStatus('local'); return; }
 
+  if (notes.length === 0) renderSkeleton();
   updateStatus('syncing');
   try {
     const data = await apiFetch('/notes');
     notes = dropTombstoned(mergeNotes(data.notes || [], notes));
     saveLocal();
+    animateNext = true;
     render();
     await syncPending();
     fetchGroups();
@@ -91,12 +93,11 @@ function renderGroupBar() {
   if (!bar) return;
   const allCount = notes.length;
   const noGroupCount = notes.filter(n => !n.group).length;
-  let html = `<span class="group-chip${!activeGroup && !activeTag ? ' active' : ''}" data-type="group" data-group="">全部 <span style="color:var(--text-muted)">${allCount}</span></span>`;
-  if (noGroupCount > 0) html += `<span class="group-chip${activeGroup === '!' ? ' active' : ''}" data-type="group" data-group="!">未分组 <span style="color:var(--text-muted)">${noGroupCount}</span></span>`;
-  for (const g of groups) html += `<span class="group-chip${activeGroup === g.name ? ' active' : ''}" data-type="group" data-group="${esc(g.name)}">📁 ${esc(g.name)} <span style="color:var(--text-muted)">${g.count}</span></span>`;
+  let html = `<span class="group-chip${!activeGroup && !activeTag ? ' active' : ''}" data-type="group" data-group="">全部 <span class="chip-count">${allCount}</span></span>`;
+  if (noGroupCount > 0) html += `<span class="group-chip${activeGroup === '!' ? ' active' : ''}" data-type="group" data-group="!">未分组 <span class="chip-count">${noGroupCount}</span></span>`;
+  for (const g of groups) html += `<span class="group-chip${activeGroup === g.name ? ' active' : ''}" data-type="group" data-group="${esc(g.name)}">${ICONS.folder}${esc(g.name)} <span class="chip-count">${g.count}</span></span>`;
   if (allTags.length > 0) {
-    html += '<span style="color:var(--border);margin:0 2px;font-size:12px;line-height:28px">│</span>';
-    for (const t of allTags) html += `<span class="group-chip${activeTag === t.name ? ' active' : ''}" data-type="tag" data-tag="${esc(t.name)}">🏷 ${esc(t.name)} <span style="color:var(--text-muted)">${t.count}</span></span>`;
+    for (const t of allTags) html += `<span class="group-chip${activeTag === t.name ? ' active' : ''}" data-type="tag" data-tag="${esc(t.name)}">${ICONS.tag}${esc(t.name)} <span class="chip-count">${t.count}</span></span>`;
   }
   bar.innerHTML = html;
   bar.querySelectorAll('.group-chip').forEach(chip => {
@@ -176,53 +177,82 @@ function render(filter = '') {
   filtered = filtered.slice().sort(compareNotes);
 
   renderGroupBar();
-  if (countEl) countEl.textContent = notes.length + ' 条';
+  if (countEl) countEl.textContent = notes.length + ' 篇';
+
+  const animate = animateNext;
+  animateNext = false;
 
   if (filtered.length === 0) {
     listEl.classList.remove('desktop-masonry');
-    listEl.innerHTML = notes.length === 0
-      ? `<div class="empty-state"><span class="icon">🍃</span><span class="hint">万物藏于心</span></div>`
-      : `<div class="empty-state"><span class="hint">没有找到匹配的笔记</span></div>`;
+    listEl.style.gap = '';
+    if (notes.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">
+        <div class="illustration">${ICONS.moon}</div>
+        <div class="hint">万物藏于心</div>
+        <div class="sub">还没有写下任何片段</div>
+        <button class="empty-action" type="button">写下此刻</button>
+      </div>`;
+    } else {
+      listEl.innerHTML = `<div class="empty-state">
+        <div class="hint">没有找到匹配的笔记</div>
+        <div class="sub">换个词，或者清空搜索</div>
+      </div>`;
+    }
+    const action = listEl.querySelector('.empty-action');
+    if (action) action.addEventListener('click', () => openEditor());
     return;
   }
 
   const isDesktop = window.innerWidth >= 600;
-  const numCols = window.innerWidth >= 900 ? 4 : 3;
+  const numCols = window.innerWidth >= 1400 ? 4 : window.innerWidth >= 900 ? 3 : 2;
 
   if (isDesktop) {
+    const colGap = window.innerWidth >= 900 ? 16 : 14;
+    const colWidth = (window.innerWidth - 64 - (numCols - 1) * colGap) / numCols;
     listEl.classList.add('desktop-masonry');
-    // 按已渲染卡片高度估算最短列，比只数条数更接近真实瀑布流
-    const cols = Array.from({ length: numCols }, () => ({ cards: [], height: 0 }));
-    for (const n of filtered) {
+    listEl.style.gap = colGap + 'px';
+
+    // 先按列宽渲染成一列，量出每张卡的真实高度，再分配到最短列
+    listEl.innerHTML = `<div class="masonry-col" style="flex:none;width:${colWidth}px;gap:0">` +
+      filtered.map((n, i) => buildCardHTML(n, i, animate)).join('') +
+      '</div>';
+    const cards = Array.from(listEl.querySelectorAll('.card'));
+    const cols = Array.from({ length: numCols }, () => {
+      const el = document.createElement('div');
+      el.className = 'masonry-col';
+      el.style.gap = colGap + 'px';
+      return { el, height: 0 };
+    });
+    for (const card of cards) {
       let shortest = 0;
       for (let i = 1; i < numCols; i++) {
         if (cols[i].height < cols[shortest].height) shortest = i;
       }
-      cols[shortest].cards.push(n);
-      cols[shortest].height += estimateCardHeight(n);
+      cols[shortest].height += card.getBoundingClientRect().height + colGap;
+      cols[shortest].el.appendChild(card);
     }
-    const colGap = window.innerWidth >= 900 ? 16 : 14;
-    listEl.style.gap = colGap + 'px';
-    listEl.innerHTML = cols.map(col =>
-      `<div class="masonry-col" style="gap:${colGap}px">` +
-      col.cards.map(n => buildCardHTML(n)).join('') +
-      '</div>'
-    ).join('');
+    listEl.innerHTML = '';
+    cols.forEach(col => listEl.appendChild(col.el));
   } else {
     listEl.classList.remove('desktop-masonry');
     listEl.style.gap = '';
-    listEl.innerHTML = filtered.map(n => buildCardHTML(n)).join('');
+    listEl.innerHTML = filtered.map((n, i) => buildCardHTML(n, i, animate)).join('');
   }
 
   bindCardEvents();
 }
 
-// 粗略估算卡片高度：正文按字数折行 + 图片 + 标签
-function estimateCardHeight(n) {
-  const bodyLen = (n.body || '').length;
-  const lines = Math.min(8, Math.ceil(bodyLen / 26));
-  const imgs = (n.images || []).length;
-  return 90 + lines * 24 + (n.title ? 26 : 0) + (imgs ? 116 : 0) + (safeTags(n.tags).length ? 22 : 0);
+// 首屏骨架：本地没缓存、服务端还没回包时撑住版面
+function renderSkeleton() {
+  listEl.classList.remove('desktop-masonry');
+  listEl.style.gap = '';
+  listEl.innerHTML = Array.from({ length: 3 }, () => `
+    <div class="skeleton-card">
+      <div class="sk-line w40"></div>
+      <div class="sk-line w90"></div>
+      <div class="sk-line w70"></div>
+      <div class="sk-line w40"></div>
+    </div>`).join('');
 }
 
 function bindCardEvents() {
@@ -272,6 +302,20 @@ function bindCardEvents() {
     e.stopPropagation();
     openLightbox(img.dataset.img);
   }));
+
+  // 正文没超过 6 行就不截断、不显示「展开」；超过才露出提示
+  listEl.querySelectorAll('.card').forEach(card => {
+    const bodyEl = card.querySelector('.body');
+    if (!bodyEl) return;
+    const hint = card.querySelector('.expand-hint');
+    const overflows = bodyEl.scrollHeight > bodyEl.clientHeight + 2;
+    if (overflows) {
+      if (hint) hint.hidden = false;
+    } else {
+      bodyEl.classList.add('short');
+      if (hint) hint.hidden = true;
+    }
+  });
 }
 
 function fmtISO(iso) {
@@ -282,12 +326,11 @@ function fmtISO(iso) {
   return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
-function buildCardHTML(n) {
+function buildCardHTML(n, idx = 0, animate = false) {
   const id = esc(n.id);
   const date = new Date(n.created_ts || n.ts);
   const dateStr = isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   const body = n.body || '';
-  const isLong = body.length > 200;
   const imgs = (n.images || []).map(safeImage).filter(Boolean);
   const imgHtml = imgs.length
     ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="${esc(f)}">`).join('')}</div>`
@@ -296,13 +339,13 @@ function buildCardHTML(n) {
   const tags = safeTags(n.tags);
   const createdFull = fmtISO(n.created_at);
   const updatedFull = n.updated_at && n.updated_at !== n.created_at ? fmtISO(n.updated_at) : '';
-  return `<div class="card${n.pinned ? ' pinned' : ''}" data-id="${id}">
-      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}${n.shared ? '<span class="shared-badge">🌐 公开</span>' : ''}${n.pending ? '<span class="pending-badge">待同步</span>' : ''}</span><span class="actions"><button class="pin-btn" data-id="${id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${id}">编辑</button><button class="del-btn" data-id="${id}">删除</button></span></div>
+  return `<div class="card${n.pinned ? ' pinned' : ''}${animate ? ' anim' : ''}" data-id="${id}" style="--i:${Math.min(idx, 10)}">
+      <div class="meta"><span class="time">${dateStr}${n.shared ? '<span class="shared-badge">公开</span>' : ''}${n.pending ? '<span class="pending-badge">待同步</span>' : ''}</span><span class="actions"><button class="pin-btn" data-id="${id}" type="button">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${id}" type="button">编辑</button><button class="del-btn" data-id="${id}" type="button">删除</button></span></div>
       ${n.title ? '<div class="title">' + esc(n.title) + '</div>' : ''}
-      <div class="body ${isLong ? '' : 'short'}" data-id="${id}">${n.group ? '<span class="group-badge">' + esc(n.group) + '</span>' : ''}${bodyHTML}</div>
+      <div class="body" data-id="${id}">${n.group ? '<span class="group-badge">' + esc(n.group) + '</span>' : ''}${bodyHTML}</div>
       ${tags.length ? '<div class="card-tags">' + tags.map(t => '<span class="card-tag">' + esc(t) + '</span>').join('') + '</div>' : ''}
       ${imgHtml}
-      ${isLong ? '<div class="expand-hint" data-id="' + id + '">点击展开全文…</div>' : ''}
+      <div class="expand-hint" data-id="${id}" hidden>点击展开全文…</div>
       <div class="card-footer">${createdFull ? '创建于 ' + createdFull : ''}${updatedFull ? ' · 更新于 ' + updatedFull : ''}</div>
     </div>`;
 }

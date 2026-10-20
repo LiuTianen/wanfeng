@@ -35,6 +35,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
       searchWrap.style.display = 'none';
       if (groupBar) groupBar.style.display = 'none';
       headerBtns.style.display = 'none';
+      if (countEl) countEl.style.display = 'none';
       discoverView.style.display = 'flex';
       loadDiscover();
     } else {
@@ -43,7 +44,9 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
       searchWrap.style.display = '';
       if (groupBar) groupBar.style.display = '';
       headerBtns.style.display = '';
+      if (countEl) countEl.style.display = '';
       discoverView.style.display = 'none';
+      animateNext = true;
       render(searchEl.value);
     }
   });
@@ -68,8 +71,16 @@ document.getElementById('btn-search').addEventListener('click', () => {
 searchEl.addEventListener('input', () => render(searchEl.value));
 
 /* ── 启动 ── */
-applyBackground();
+applyTheme();
 load();
+
+// 跟随系统：系统外观变化时实时切换
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: light)');
+  const onScheme = () => { if (getThemeMode() === 'system') applyTheme('system'); };
+  if (mq.addEventListener) mq.addEventListener('change', onScheme);
+  else if (mq.addListener) mq.addListener(onScheme);
+}
 
 // 窗口缩放时重排瀑布流（仅在晚风页生效）
 let resizeTimer;

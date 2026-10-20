@@ -29,7 +29,7 @@ async function loadDiscover() {
         : '';
       const tags = safeTags(n.tags);
       return '<div class="discover-card">' +
-        (n.pinned ? '<div style="font-size:11px;color:var(--accent);margin-bottom:6px">📌 置顶</div>' : '') +
+        (n.pinned ? '<div class="dc-pin">置顶</div>' : '') +
         (n.title ? '<div class="dc-title">' + esc(n.title) + '</div>' : '') +
         '<div class="dc-body">' + bodyHTML + '</div>' +
         (tags.length ? '<div class="card-tags" style="margin-top:8px">' +

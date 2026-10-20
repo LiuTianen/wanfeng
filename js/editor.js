@@ -8,33 +8,35 @@ function openEditor(id = null) {
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="editor" role="dialog" aria-modal="true">
+      <div class="sheet-handle" aria-hidden="true"></div>
       <input type="text" id="note-title" class="note-title-input" placeholder="标题（选填）…" value="${note ? esc(note.title) : ''}" autocomplete="off" maxlength="200">
       <div class="group-input-row" style="position:relative">
-        <label>📁</label>
+        <label>${ICONS.folder}</label>
         <input type="text" id="note-group" placeholder="分组（点选或输入）…" value="${note ? esc(note.group) : ''}" autocomplete="off" maxlength="64">
         <div class="group-dropdown" id="group-dropdown"></div>
       </div>
       <div class="tag-input-row" id="tag-input-row" style="position:relative">
-        <label>🏷️</label>
+        <label>${ICONS.tag}</label>
         <input type="text" id="tag-input" placeholder="输入标签后点 + 或回车…" autocomplete="off" maxlength="32">
-        <button id="tag-add-btn" type="button" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:50%;width:28px;height:28px;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0">+</button>
+        <button id="tag-add-btn" type="button">+</button>
         <div class="group-dropdown" id="tag-dropdown"></div>
       </div>
       <div class="img-upload-row">
-        <label>🖼️</label>
-        <button class="btn-img-upload" id="btn-pick-image" type="button">+ 添加图片</button>
+        <label>${ICONS.image}</label>
+        <button class="btn-img-upload" id="btn-pick-image" type="button">添加图片</button>
         <input type="file" id="file-input" accept="image/*" multiple style="display:none">
         <span class="img-upload-progress" id="upload-progress"></span>
       </div>
       <div class="img-preview-wrap" id="img-preview-wrap"></div>
       <div class="share-toggle-row" style="margin-bottom:2px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-muted)">
-          <input type="checkbox" id="note-shared" style="accent-color:var(--accent)">
-          <span>🌐 公开此笔记</span>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-2)">
+          <input type="checkbox" id="note-shared">
+          <span>公开此笔记</span>
         </label>
       </div>
       <textarea id="note-body" placeholder="此刻想写点什么…" maxlength="100000">${note ? esc(note.body) : ''}</textarea>
       <div class="btn-row">
+        <span class="char-count" id="char-count">0 字</span>
         <button class="btn btn-ghost" id="btn-cancel" type="button">取消</button>
         <button class="btn btn-save" id="btn-save" type="button">保存</button>
       </div></div>`;
@@ -49,11 +51,18 @@ function openEditor(id = null) {
   const fileInput = overlay.querySelector('#file-input');
   const imgPreview = overlay.querySelector('#img-preview-wrap');
   const uploadProgress = overlay.querySelector('#upload-progress');
+  const charCount = overlay.querySelector('#char-count');
+
+  const updateCharCount = () => {
+    if (!charCount) return;
+    charCount.textContent = textarea.value.length.toLocaleString('zh-CN') + ' 字';
+  };
+  textarea.addEventListener('input', updateCharCount);
+  updateCharCount();
 
   textarea.focus();
   if (note) overlay.querySelector('#note-shared').checked = !!note.shared;
-  let currentTags = note ? safeTags(note.tags).slice() : [];
-  let currentImages = note ? (note.images || []).map(safeImage).filter(Boolean) : [];
+  let currentTags = note ? safeTags(note.tags).slice() : [];  let currentImages = note ? (note.images || []).map(safeImage).filter(Boolean) : [];
 
   /* ── 分组下拉 ── */
   function populateGroupDropdown() {

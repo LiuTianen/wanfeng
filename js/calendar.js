@@ -29,7 +29,7 @@ function dayKey(date) {
 function renderCalendar() {
   calView.classList.add('active');
   listEl.classList.add('hidden');
-  if (countEl) countEl.textContent = notes.length + ' 条';
+  if (countEl) countEl.textContent = notes.length + ' 篇';
 
   const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
   calView.querySelector('.cal-header').innerHTML = `

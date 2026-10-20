@@ -18,10 +18,9 @@ function promptConnection() {
   const key = getApiKey();
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
-  overlay.style.alignItems = 'center';
-  overlay.style.padding = '20px';
   overlay.innerHTML = `
-    <div class="editor" style="border-radius:12px;max-width:400px">
+    <div class="editor" style="max-width:400px">
+      <div class="sheet-handle" aria-hidden="true"></div>
       <div style="text-align:center;color:var(--accent);font-family:var(--serif);font-size:18px;margin-bottom:12px">连接服务器</div>
       <input type="password" id="apikey-input" placeholder="粘贴 API Key…" value="${esc(key)}" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font);outline:none">
       <div class="btn-row" style="margin-top:14px">
@@ -62,13 +61,12 @@ function promptConnection() {
 function promptSettings() {
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
-  overlay.style.alignItems = 'center';
-  overlay.style.padding = '20px';
-  overlay.innerHTML = `<div class="editor" id="settings-panel" style="border-radius:12px;max-width:480px">
+  overlay.innerHTML = `<div class="editor" id="settings-panel" style="max-width:480px">
+      <div class="sheet-handle" aria-hidden="true"></div>
       <div style="text-align:center;color:var(--accent);font-family:var(--serif);font-size:18px;margin-bottom:8px">设置</div>
       <div style="text-align:center;font-size:12px;color:var(--text-muted);margin-bottom:12px">${currentKeyIsAdmin ? '管理员' : '用户'} · ${getApiKey() ? '已连接' : '未连接'}</div>
       <div id="bg-panel" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">🎨 背景设置</div>
+        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">背景设置</div>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="bg-presets">
           <div class="bg-swatch active" data-bg="" style="background:#141414;border:2px solid var(--accent)" title="默认"></div>
           <div class="bg-swatch" data-bg="linear-gradient(135deg,#0f0c29,#302b63,#24243e)" style="background:linear-gradient(135deg,#0f0c29,#302b63,#24243e)" title="深邃紫"></div>
@@ -79,18 +77,26 @@ function promptSettings() {
           <div class="bg-swatch" data-bg="linear-gradient(160deg,#1a1a1a,#2d1b00)" style="background:linear-gradient(160deg,#1a1a1a,#2d1b00)" title="暖暗金"></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn-img-upload" id="btn-bg-upload" style="font-size:12px" type="button">📷 自定义图片</button>
+          <button class="btn-img-upload" id="btn-bg-upload" style="font-size:12px" type="button">自定义图片</button>
           <button class="btn btn-ghost" id="btn-bg-reset" style="font-size:12px;padding:6px 14px" type="button">恢复默认</button>
           <input type="file" id="bg-file-input" accept="image/*" style="display:none">
         </div>
       </div>
+      <div id="theme-panel" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">外观</div>
+        <div class="seg" id="theme-seg">
+          <button data-theme="system" type="button">跟随系统</button>
+          <button data-theme="dark" type="button">深色</button>
+          <button data-theme="light" type="button">浅色</button>
+        </div>
+      </div>
       <div id="admin-panel" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px"></div>
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">📦 数据</div>
+        <div style="font-size:14px;color:var(--accent);margin-bottom:12px">数据</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost" id="settings-export" style="font-size:12px;padding:8px 16px" type="button">📤 导出 JSON</button>
-          <button class="btn btn-ghost" id="settings-import" style="font-size:12px;padding:8px 16px" type="button">📥 导入 JSON</button>
-          <button class="btn btn-ghost" id="settings-disconnect" style="font-size:12px;padding:8px 16px;color:#d47272" type="button">🔌 断开连接</button>
+          <button class="btn btn-ghost" id="settings-export" style="font-size:12px;padding:8px 16px" type="button">导出 JSON</button>
+          <button class="btn btn-ghost" id="settings-import" style="font-size:12px;padding:8px 16px" type="button">导入 JSON</button>
+          <button class="btn btn-ghost" id="settings-disconnect" style="font-size:12px;padding:8px 16px;color:#d47272" type="button">断开连接</button>
         </div>
         <input type="file" id="settings-import-file" accept=".json" style="display:none">
       </div>
@@ -99,6 +105,20 @@ function promptSettings() {
       </div></div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#settings-close').addEventListener('click', () => overlay.remove());
+
+  // 外观：跟随系统 / 深色 / 浅色
+  const seg = overlay.querySelector('#theme-seg');
+  const syncSeg = () => {
+    const mode = getThemeMode();
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.theme === mode));
+  };
+  seg.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    setThemeMode(btn.dataset.theme);
+    syncSeg();
+  });
+  syncSeg();
 
   // 导出
   overlay.querySelector('#settings-export').addEventListener('click', () => {
@@ -204,15 +224,16 @@ function setBackground(bg) {
 
 function applyBackground() {
   const bg = localStorage.getItem('wanfeng_bg') || '';
+  // 浅色模式下给自定义背景盖一层暖白纱，避免深色渐变把文字压没
+  const veil = resolvedTheme(getThemeMode()) === 'light'
+    ? 'linear-gradient(rgba(250,247,240,.72), rgba(250,247,240,.86)), '
+    : '';
+
   if (bg) {
     if (bg.startsWith('data:') || bg.startsWith('http')) {
-      document.body.style.backgroundImage = `url(${bg})`;
-      document.body.style.backgroundSize = 'cover';
-      document.body.style.backgroundPosition = 'center';
-      document.body.style.backgroundAttachment = 'fixed';
-      document.body.style.background = `${document.body.style.backgroundImage} ${document.body.style.backgroundSize} ${document.body.style.backgroundPosition} ${document.body.style.backgroundAttachment}`;
+      document.body.style.background = `${veil}url(${bg}) center / cover no-repeat fixed`;
     } else {
-      document.body.style.background = bg;
+      document.body.style.background = veil ? `${veil}${bg}` : bg;
       document.body.style.backgroundAttachment = 'fixed';
     }
   } else {

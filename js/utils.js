@@ -3,8 +3,44 @@
 const STORAGE_KEY = 'wanfeng_notes';
 const API_KEY_STORAGE = 'wanfeng_apikey';
 const TOMBSTONE_KEY = 'wanfeng_deleted';
+const THEME_KEY = 'wanfeng_theme';
 const API_BASE = '/api';
-const APP_VERSION = '17';
+const APP_VERSION = '18';
+
+// 分组栏用到的小图标（避免 emoji 在不同系统里粗细不一）
+const ICONS = {
+  folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h3.6l1.8 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.8A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6.6a2 2 0 0 1 1.4.6l7.4 7.4a2 2 0 0 1 0 2.8l-4.6 4.6a2 2 0 0 1-2.8 0L4.6 12A2 2 0 0 1 4 10.6z"/><circle cx="8.4" cy="8.4" r="1.3"/></svg>',
+  moon: '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M62 20a30 30 0 1 0 14 44 24 24 0 0 1-14-44z"/><path d="M22 34h10M17 48h8M24 62h9"/><circle cx="70" cy="30" r="1.4"/><circle cx="78" cy="44" r="1"/></svg>',
+  image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4.5 17 4.6-4.6a1.4 1.4 0 0 1 2 0l3.2 3.2 2-2a1.4 1.4 0 0 1 2 0L20 15"/></svg>',
+};
+
+// ── 外观 ──
+function getThemeMode() {
+  try { return localStorage.getItem(THEME_KEY) || 'system'; } catch { return 'system'; }
+}
+
+function resolvedTheme(mode) {
+  if (mode === 'light' || mode === 'dark') return mode;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(mode) {
+  const m = mode || getThemeMode();
+  const resolved = resolvedTheme(m);
+  const root = document.documentElement;
+  if (m === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', m);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', resolved === 'light' ? '#faf7f0' : '#1a1a1a');
+  if (typeof applyBackground === 'function') applyBackground();
+  return resolved;
+}
+
+function setThemeMode(mode) {
+  try { localStorage.setItem(THEME_KEY, mode); } catch { /* 存不进去也不影响本次生效 */ }
+  applyTheme(mode);
+}
 
 // 完整的 HTML 转义：漏掉引号就等于给属性注入留门
 function esc(value) {

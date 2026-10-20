@@ -92,11 +92,14 @@ sudo cp ../deploy/systemd/wanfeng-api.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now wanfeng-api
 
+# 日志轮转（应用长期持有句柄，用 copytruncate）
+sudo cp ../deploy/logrotate/wanfeng /etc/logrotate.d/wanfeng
+
 # 取主 Key（首次启动后生成）
 sudo cat /var/lib/wanfeng/.apikey
 ```
 
-`systemd` 单元已包含 `NoNewPrivileges`、`ProtectSystem=strict`、`PrivateTmp` 等加固项；`/var/lib/wanfeng`、`/var/log/wanfeng`、`/var/www/wanfeng/uploads` 是唯一可写路径。
+`systemd` 单元已包含 `NoNewPrivileges`、`ProtectSystem=strict`、`PrivateTmp` 等加固项；`/var/lib/wanfeng`、`/var/log/wanfeng`、`/var/www/wanfeng/uploads` 是唯一可写路径。gunicorn 26 的控制套接字默认写在 `$HOME`，在只读根文件系统下会报错，所以单元里显式加了 `--no-control-socket`。
 
 ### 2. 前端 + Nginx
 

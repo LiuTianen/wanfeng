@@ -1,0 +1,11 @@
+/var/log/wanfeng/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    # 应用一直持有日志句柄，用 copytruncate 避免必须重启服务
+    copytruncate
+    su www-data www-data
+}

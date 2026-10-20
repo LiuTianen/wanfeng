@@ -29,6 +29,7 @@ ExecStart=/var/www/wanfeng/server/venv/bin/gunicorn \
     --timeout 60 \
     --access-logfile - \
     --error-logfile - \
+    --no-control-socket \
     --bind 127.0.0.1:5000 \
     app:app
 Restart=always

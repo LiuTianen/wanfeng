@@ -7,7 +7,8 @@
       --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
     }
     html, body {
-      height: 100dvh; height: 100vh; background: var(--bg); color: var(--text);
+      /* 顺序很重要：先 100vh 兜底，再用 100dvh 覆盖，否则 iOS 地址栏会顶掉底部导航 */
+      height: 100vh; height: 100dvh; background: var(--bg); color: var(--text);
       font-family: var(--font); font-size: 15px; line-height: 1.7;
       -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; position: relative;
     }
@@ -29,6 +30,9 @@
     .status-dot.offline { background: #ff9800; }
     .status-dot.local { background: var(--text-muted); }
     .status-dot.unauth { background: #f44336; }
+    .status-dot.pending { background: #ffc107; box-shadow: 0 0 6px #ffc107; }
+    .status-dot.syncing { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
     /* ── Floating icon buttons ── */
     .header-icon-btn {
       width: 38px; height: 38px; border-radius: 50%;
@@ -36,20 +40,25 @@
       background: rgba(255,255,255,.06);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: all .25s ease; padding: 0;
+      color: var(--text-muted);
     }
-    .header-icon-btn img {
-      width: 20px; height: 20px;
-      opacity: .55; filter: grayscale(30%);
+    .header-icon-btn img,
+    .header-icon-btn svg {
+      width: 18px; height: 18px;
+      opacity: .7;
       transition: all .25s ease;
     }
+    .header-icon-btn svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
     .header-icon-btn:hover { background: rgba(255,255,255,.1); }
-    .header-icon-btn:hover img { opacity: .9; filter: grayscale(0%); transform: scale(1.08); }
+    .header-icon-btn:hover img,
+    .header-icon-btn:hover svg { opacity: 1; transform: scale(1.08); }
     /* active (calendar open) */
-    .header-icon-btn.active { background: rgba(201,169,110,.12); }
-    .header-icon-btn.active img { opacity: 1; filter: grayscale(0%); }
+    .header-icon-btn.active { background: rgba(201,169,110,.12); color: var(--accent); }
+    .header-icon-btn.active img,
+    .header-icon-btn.active svg { opacity: 1; }
     /* add — warm glow */
-    #btn-add { background: rgba(201,169,110,.12); }
-    #btn-add img { opacity: 1; filter: grayscale(0%); }
+    #btn-add { background: rgba(201,169,110,.12); color: var(--accent); }
+    #btn-add img, #btn-add svg { opacity: 1; }
     #btn-add:hover { background: rgba(201,169,110,.2); box-shadow: 0 0 14px rgba(201,169,110,.12); }
 
     /* ── Search (collapsible) ── */
@@ -117,6 +126,10 @@
     .card .time { font-size: 11px; color: var(--text-muted); letter-spacing: .5px; }
     .card .actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
     .card:hover .actions { opacity: 1; }
+    /* 触屏设备没有 hover，按钮必须常驻，否则用户根本看不到「编辑/删除/置顶」 */
+    @media (hover: none) {
+      .card .actions { opacity: 1; }
+    }
     .card .actions button { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
     .card .actions button:hover { color: var(--accent); }
     .card .actions button.del:hover { color: #d47272; }
@@ -128,7 +141,8 @@
     .card .body { color: var(--text); font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: hidden; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
     .card .body em, .card .body i { font-style: italic; color: var(--text-muted); font-family: var(--serif); }
     .card .body.expanded { max-height: none; mask-image: none; -webkit-mask-image: none; }
-    .card .body.short { max-height: none; }
+    .card .body.short { max-height: none; mask-image: none; -webkit-mask-image: none; }
+    .pending-badge { display: inline-block; padding: 1px 8px; border-radius: 8px; background: rgba(255,193,7,.14); border: 1px solid rgba(255,193,7,.4); color: #ffc107; font-size: 10px; margin-left: 6px; }
     .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .card-tag { padding: 1px 8px; border-radius: 8px; background: rgba(201,169,110,.12); color: var(--accent); font-size: 10px; }
     .card .shared-badge { display: inline-block; padding: 1px 8px; border-radius: 8px; background: rgba(201,169,110,.12); border: 1px solid rgba(201,169,110,.35); color: var(--accent); font-size: 10px; margin-left: 6px; }
@@ -291,7 +305,22 @@
     .nav-tab { font-family: var(--serif); font-size: 14px; color: var(--text-muted); cursor: pointer; padding: 8px 24px; border-radius: 12px; transition: all .2s; letter-spacing: 2px; user-select: none; background: none; border: none; min-width: 80px; text-align: center; }
     .nav-tab.active { color: var(--accent); background: var(--accent-dim); }
     .nav-tab:hover:not(.active) { color: var(--text); }
-    #import-file { display: none; }
+
+    /* ── 可访问性 ── */
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+      }
+    }
 
     @media (min-width: 600px) {
       #list {

@@ -1,27 +1,24 @@
 // ── 晚风 · 应用入口 ──
 
-// ── 注册 Service Worker（自修复版）──
-if ("serviceWorker" in navigator) {
-  async function initSW() {
-    const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) {
-      // 已有 SW — 强制检查更新
+// ── 注册 Service Worker ──
+if ('serviceWorker' in navigator) {
+  // 只注册一次 controllerchange，避免重复 reload
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js?v=' + APP_VERSION);
       await reg.update();
-      // 如果不是最新版，等新 SW 激活后刷新
-      if (reg.waiting) {
-        reg.waiting.postMessage('skip-waiting');
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          window.location.reload();
-        });
-      }
+      if (reg.waiting) reg.waiting.postMessage('skip-waiting');
+    } catch (e) {
+      console.warn('sw register failed', e);
     }
-    // 注册（或重新注册）
-    navigator.serviceWorker.register('/sw.js?v=v16').catch(() => {});
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    });
-  }
-  initSW();
+  });
 }
 
 document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -59,12 +56,14 @@ document.getElementById('btn-settings').addEventListener('click', promptSettings
 document.getElementById('btn-add').addEventListener('click', () => openEditor());
 
 /* ── 搜索 ── */
-// collapsible search
-const searchWrap = document.querySelector('.search-wrap');
 document.getElementById('btn-search').addEventListener('click', () => {
   const open = searchWrap.classList.toggle('open');
-  if (open) { searchEl.focus(); }
-  else { searchEl.value = ''; render(); }
+  if (open) {
+    searchEl.focus();
+  } else {
+    searchEl.value = '';
+    render();
+  }
 });
 searchEl.addEventListener('input', () => render(searchEl.value));
 
@@ -77,7 +76,7 @@ let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (currentView === 'discover') return;  // 拾光页不触发重排
+    if (currentView === 'discover') return;
     if (!showCalendar) render(searchEl.value);
   }, 200);
 });

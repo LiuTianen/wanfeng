@@ -1,63 +1,94 @@
 // ── 晚风 · 笔记数据 & 列表渲染 ──
 
 async function load() {
-  try { notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); notes.sort((a,b) => b.ts - a.ts); } catch { notes = []; }
-  render();
-  updateStatus('local');
-  const key = getApiKey(); if (!key) { updateStatus('local'); return; }
-  updateStatus(); // 显示连接中（无参数 = local 样式）
+  loadLocal();
+  const key = getApiKey();
+  if (!key) { updateStatus('local'); return; }
+
+  updateStatus('syncing');
   try {
     const data = await apiFetch('/notes');
-    notes = mergeNotes(data.notes || [], notes);
-    saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
+    notes = dropTombstoned(mergeNotes(data.notes || [], notes));
+    saveLocal();
+    render();
+    await syncPending();
+    fetchGroups();
+    fetchTags();
   } catch (e) {
-    console.error('load failed:', e.message || e);
-    if (e.message === 'unauthorized') { updateStatus('unauth'); toast('密钥无效'); return; }
-    toast('连接失败: ' + (e.message || e));
-    // SW 缓存可能返回旧错误 — 3秒后重试一次
-    setTimeout(async () => {
-      try {
-        const data = await apiFetch('/notes');
-        notes = mergeNotes(data.notes || [], notes);
-        saveLocal(); render(); updateStatus('online'); fetchGroups(); fetchTags();
-        toast('已连接');
-      } catch (e2) {
-        console.error('retry failed:', e2.message || e2);
-        updateStatus('offline');
-        toast('重试失败: ' + (e2.message || e2));
-      }
-    }, 3000);
+    handleLoadError(e);
+  }
+}
+
+function loadLocal() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    notes = Array.isArray(parsed) ? parsed.map(normNote) : [];
+  } catch {
+    notes = [];
+  }
+  notes = dropTombstoned(notes).sort(compareNotes);
+  render();
+  updateStatus(getApiKey() ? 'syncing' : 'local');
+}
+
+function handleLoadError(e) {
+  if (e && e.status === 401) {
+    updateStatus('unauth');
+    toast('密钥无效，请重新连接');
+    return;
+  }
+  updateStatus('offline');
+  toast('离线模式：改动会先存在本地');
+}
+
+// 把本地 pending 的改动推给服务端；返回是否成功
+async function syncPending() {
+  if (!getApiKey()) { updateStatus('local'); return false; }
+  if (!hasPending()) { updateStatus('online'); return true; }
+  updateStatus('pending');
+  try {
+    const data = await flushQueue();
+    render();
+    updateStatus('online');
+    if (data && data.skipped) toast(data.skipped + ' 条改动未能同步');
+    return true;
+  } catch (e) {
+    if (e && e.status === 401) { updateStatus('unauth'); toast('密钥无效'); return false; }
     updateStatus('offline');
+    toast('同步失败，已保存到本地');
+    return false;
   }
 }
-function mergeNotes(serverNotes, localNotes) {
-  const map = new Map();
-  for (const n of localNotes) map.set(n.id, n);
-  for (const n of serverNotes) {
-    const localNote = map.get(n.id);
-    map.set(n.id, {
-      id: n.id, body: n.body, title: n.title || '', group: n.group || '', tags: safeTags(n.tags), shared: n.shared || false,
-      images: (n.images && n.images.length) ? n.images : (localNote ? (localNote.images || []) : []), ts: n.ts || Date.now(),
-      created_ts: n.created_ts || n.ts || Date.now(), updated_at: n.updated_at, pinned: n.pinned || false, pinned_at: n.pinned_at || null
-    });
+
+function saveLocal() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+  } catch {
+    toast('本地存储已满，请导出备份');
   }
-  return Array.from(map.values()).sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
-  });
 }
-function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }
+
 async function fetchGroups() {
-  try { const data = await apiFetch('/groups'); groups = data.groups || []; } catch { groups = []; }
+  if (!getApiKey()) return;
+  try {
+    const data = await apiFetch('/groups');
+    groups = data.groups || [];
+  } catch { /* 保留上一次的分组，不要闪空 */ }
   renderGroupBar();
 }
+
 async function fetchTags() {
-  try { const data = await apiFetch('/tags'); allTags = data.tags || []; } catch { allTags = []; }
+  if (!getApiKey()) return;
+  try {
+    const data = await apiFetch('/tags');
+    allTags = data.tags || [];
+  } catch { /* 同上 */ }
   renderGroupBar();
 }
+
 function renderGroupBar() {
   const bar = document.getElementById('group-bar');
+  if (!bar) return;
   const allCount = notes.length;
   const noGroupCount = notes.filter(n => !n.group).length;
   let html = `<span class="group-chip${!activeGroup && !activeTag ? ' active' : ''}" data-type="group" data-group="">全部 <span style="color:var(--text-muted)">${allCount}</span></span>`;
@@ -72,76 +103,80 @@ function renderGroupBar() {
     chip.addEventListener('click', () => {
       if (chip.dataset.type === 'tag') { activeTag = chip.dataset.tag; activeGroup = ''; }
       else { activeGroup = chip.dataset.group; activeTag = ''; }
-      renderGroupBar(); render(searchEl.value);
+      renderGroupBar();
+      render(searchEl.value);
     });
   });
 }
-async function saveToServer(note) {
-  if (!getApiKey()) return null;
-  try { return await apiFetch('/notes', { method: 'POST', body: JSON.stringify({ id: note.id, body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [], shared: note.shared || false }) }); } catch { return null; }
-}
-async function updateOnServer(note) {
-  if (!getApiKey()) return null;
-  try { return await apiFetch('/notes/' + note.id, { method: 'PUT', body: JSON.stringify({ body: note.body, title: note.title || '', group: note.group || '', tags: safeTags(note.tags), images: note.images || [], shared: note.shared || false }) }); } catch { return null; }
-}
-async function deleteOnServer(id) {
-  if (!getApiKey()) return null;
-  try { return await apiFetch('/notes/' + id, { method: 'DELETE' }); } catch { return null; }
-}
+
 async function pinNote(id) {
-  if (!getApiKey()) return null;
+  if (!getApiKey()) { toast('请先连接服务器'); return null; }
   try {
-    const res = await apiFetch('/notes/' + id + '/pin', { method: 'POST' });
-    const n = notes.find(n => n.id === id);
-    if (n) { n.pinned = true; n.pinned_at = res.pinned_at; }
-    sortNotes(); saveLocal(); render(searchEl.value);
+    const res = await apiFetch('/notes/' + encodeURIComponent(id) + '/pin', { method: 'POST' });
+    const n = notes.find(x => x.id === id);
+    if (n) { n.pinned = true; n.pinned_ts = res.pinned_at ? Date.parse(res.pinned_at) || Date.now() : Date.now(); }
+    notes.sort(compareNotes);
+    saveLocal();
+    render(searchEl.value);
     return res;
-  } catch (e) { toast('置顶失败: ' + (e.message || e)); return null; }
+  } catch (e) {
+    toast('置顶失败: ' + (e.message || e));
+    return null;
+  }
 }
+
 async function unpinNote(id) {
-  if (!getApiKey()) return null;
+  if (!getApiKey()) { toast('请先连接服务器'); return null; }
   try {
-    await apiFetch('/notes/' + id + '/unpin', { method: 'POST' });
-    const n = notes.find(n => n.id === id);
-    if (n) { n.pinned = false; n.pinned_at = null; }
-    sortNotes(); saveLocal(); render(searchEl.value);
+    await apiFetch('/notes/' + encodeURIComponent(id) + '/unpin', { method: 'POST' });
+    const n = notes.find(x => x.id === id);
+    if (n) { n.pinned = false; n.pinned_ts = 0; }
+    notes.sort(compareNotes);
+    saveLocal();
+    render(searchEl.value);
     return true;
-  } catch (e) { toast('取消置顶失败: ' + (e.message || e)); return null; }
+  } catch (e) {
+    toast('取消置顶失败: ' + (e.message || e));
+    return null;
+  }
 }
-function sortNotes() {
-  notes.sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
-  });
-}
+
 function updateStatus(s) {
+  if (s) connState = s;
   const el = document.getElementById('status-dot');
   if (!el) return;
-  el.className = 'status-dot ' + (s || 'local');
-  el.title = { online: '已连接服务器', offline: '离线', local: '本地模式', unauth: '未配置密钥' }[s || 'local'] || '';
+  const titles = {
+    online: '已连接服务器',
+    syncing: '同步中…',
+    offline: '离线：改动会先存在本地',
+    local: '仅本地模式（未连接）',
+    unauth: '密钥无效',
+    pending: '有改动待同步',
+  };
+  el.className = 'status-dot ' + connState;
+  el.title = titles[connState] || '';
 }
+
 function render(filter = '') {
   if (showCalendar) { renderCalendar(); return; }
-  calView.classList.remove('active');
+  if (calView) calView.classList.remove('active');
   listEl.classList.remove('hidden');
 
-  const q = filter.trim().toLowerCase();
+  const q = (filter || '').trim().toLowerCase();
   let filtered = notes;
   if (activeGroup === '!') filtered = filtered.filter(n => !n.group);
   else if (activeGroup) filtered = filtered.filter(n => n.group === activeGroup);
   if (activeTag) filtered = filtered.filter(n => safeTags(n.tags).includes(activeTag));
-  if (q) filtered = filtered.filter(n => n.body.toLowerCase().includes(q));
-
-  // 置顶优先排序
-  filtered.sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return (b.created_ts || b.ts) - (a.created_ts || a.ts);
-  });
+  if (q) {
+    filtered = filtered.filter(n =>
+      (n.body || '').toLowerCase().includes(q) ||
+      (n.title || '').toLowerCase().includes(q) ||
+      safeTags(n.tags).some(t => t.toLowerCase().includes(q)));
+  }
+  filtered = filtered.slice().sort(compareNotes);
 
   renderGroupBar();
-  countEl.textContent = notes.length + ' 条';
+  if (countEl) countEl.textContent = notes.length + ' 条';
 
   if (filtered.length === 0) {
     listEl.classList.remove('desktop-masonry');
@@ -156,20 +191,21 @@ function render(filter = '') {
 
   if (isDesktop) {
     listEl.classList.add('desktop-masonry');
-    // JS 瀑布流：每张卡片塞进最短的列
-    const cols = Array.from({ length: numCols }, () => []);
+    // 按已渲染卡片高度估算最短列，比只数条数更接近真实瀑布流
+    const cols = Array.from({ length: numCols }, () => ({ cards: [], height: 0 }));
     for (const n of filtered) {
       let shortest = 0;
       for (let i = 1; i < numCols; i++) {
-        if (cols[i].length < cols[shortest].length) shortest = i;
+        if (cols[i].height < cols[shortest].height) shortest = i;
       }
-      cols[shortest].push(n);
+      cols[shortest].cards.push(n);
+      cols[shortest].height += estimateCardHeight(n);
     }
     const colGap = window.innerWidth >= 900 ? 16 : 14;
     listEl.style.gap = colGap + 'px';
-    listEl.innerHTML = cols.map(colCards =>
+    listEl.innerHTML = cols.map(col =>
       `<div class="masonry-col" style="gap:${colGap}px">` +
-      colCards.map(n => buildCardHTML(n)).join('') +
+      col.cards.map(n => buildCardHTML(n)).join('') +
       '</div>'
     ).join('');
   } else {
@@ -178,60 +214,95 @@ function render(filter = '') {
     listEl.innerHTML = filtered.map(n => buildCardHTML(n)).join('');
   }
 
-  // event bindings
+  bindCardEvents();
+}
+
+// 粗略估算卡片高度：正文按字数折行 + 图片 + 标签
+function estimateCardHeight(n) {
+  const bodyLen = (n.body || '').length;
+  const lines = Math.min(8, Math.ceil(bodyLen / 26));
+  const imgs = (n.images || []).length;
+  return 90 + lines * 24 + (n.title ? 26 : 0) + (imgs ? 116 : 0) + (safeTags(n.tags).length ? 22 : 0);
+}
+
+function bindCardEvents() {
   listEl.querySelectorAll('.card').forEach(card => card.addEventListener('click', e => {
     if (e.target.closest('button') || e.target.closest('img')) return;
     const bodyEl = card.querySelector('.body');
     const hintEl = card.querySelector('.expand-hint');
-    if (bodyEl.classList.contains('expanded')) { bodyEl.classList.remove('expanded'); if (hintEl) hintEl.textContent = '点击展开全文…'; }
-    else { bodyEl.classList.add('expanded'); if (hintEl) hintEl.textContent = '收起'; }
+    if (!bodyEl) return;
+    if (bodyEl.classList.contains('expanded')) {
+      bodyEl.classList.remove('expanded');
+      if (hintEl) hintEl.textContent = '点击展开全文…';
+    } else {
+      bodyEl.classList.add('expanded');
+      if (hintEl) hintEl.textContent = '收起';
+    }
   }));
-  listEl.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openEditor(btn.dataset.id); }));
-  listEl.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); deleteNote(btn.dataset.id); }));
+  listEl.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openEditor(btn.dataset.id);
+  }));
+  listEl.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    deleteNote(btn.dataset.id);
+  }));
   listEl.querySelectorAll('.pin-btn').forEach(btn => btn.addEventListener('click', e => {
     e.stopPropagation();
-    const n = notes.find(n => n.id === btn.dataset.id);
+    const n = notes.find(x => x.id === btn.dataset.id);
     if (!n) return;
     if (n.pinned) unpinNote(btn.dataset.id);
     else pinNote(btn.dataset.id);
   }));
   listEl.querySelectorAll('.expand-hint').forEach(hint => hint.addEventListener('click', e => {
     e.stopPropagation();
-    const card = listEl.querySelector(`.card[data-id="${hint.dataset.id}"]`);
+    const card = hint.closest('.card');
     if (!card) return;
     const bodyEl = card.querySelector('.body');
-    if (bodyEl.classList.contains('expanded')) { bodyEl.classList.remove('expanded'); hint.textContent = '点击展开全文…'; }
-    else { bodyEl.classList.add('expanded'); hint.textContent = '收起'; }
+    if (!bodyEl) return;
+    if (bodyEl.classList.contains('expanded')) {
+      bodyEl.classList.remove('expanded');
+      hint.textContent = '点击展开全文…';
+    } else {
+      bodyEl.classList.add('expanded');
+      hint.textContent = '收起';
+    }
   }));
   listEl.querySelectorAll('.card-images img').forEach(img => img.addEventListener('click', e => {
-    e.stopPropagation(); openLightbox(img.dataset.img);
+    e.stopPropagation();
+    openLightbox(img.dataset.img);
   }));
 }
+
+function fmtISO(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = v => String(v).padStart(2, '0');
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
 function buildCardHTML(n) {
+  const id = esc(n.id);
   const date = new Date(n.created_ts || n.ts);
-  const dateStr = date.toLocaleDateString('zh-CN', { month:'short', day:'numeric' });
-  const isLong = n.body.length > 200;
-  const imgs = n.images || [];
-  const imgHtml = imgs.length ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="/uploads/${esc(f)}">`).join('')}</div>` : '';
-  const bodyHTML = esc(n.body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
-  const pinnedClass = n.pinned ? ' pinned' : '';
-  // 格式化完整时间（ISO → 中文可读）
-  function fmtISO(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const pad = n => String(n).padStart(2,'0');
-    return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+pad(d.getHours())+':'+pad(d.getMinutes());
-  }
+  const dateStr = isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  const body = n.body || '';
+  const isLong = body.length > 200;
+  const imgs = (n.images || []).map(safeImage).filter(Boolean);
+  const imgHtml = imgs.length
+    ? `<div class="card-images">${imgs.map(f => `<img src="/uploads/${esc(f)}" alt="" loading="lazy" data-img="${esc(f)}">`).join('')}</div>`
+    : '';
+  const bodyHTML = esc(body).replace(/\*(\S[^*\n]*\S|\S)\*/g, '<em>$1</em>');
+  const tags = safeTags(n.tags);
   const createdFull = fmtISO(n.created_at);
   const updatedFull = n.updated_at && n.updated_at !== n.created_at ? fmtISO(n.updated_at) : '';
-  return `<div class="card${pinnedClass}" data-id="${n.id}">
-      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}${n.shared ? '<span class="shared-badge">🌐 公开</span>' : ''}</span><span class="actions"><button class="pin-btn" data-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${n.id}">编辑</button><button class="del-btn" data-id="${n.id}">删除</button></span></div>
-      ${n.title ? '<div class="title">'+esc(n.title)+'</div>' : ''}
-      <div class="body ${isLong ? '' : 'short'}" data-id="${n.id}">${n.group ? '<span class="group-badge">'+esc(n.group)+'</span>' : ''}${bodyHTML}</div>
-      ${(() => { const tg = safeTags(n.tags); return tg.length ? '<div class="card-tags">'+tg.map(t => '<span class="card-tag">'+esc(t)+'</span>').join('')+'</div>' : ''; })()}
+  return `<div class="card${n.pinned ? ' pinned' : ''}" data-id="${id}">
+      <div class="meta"><span class="time">${n.pinned ? '📌 ' : ''}${dateStr}${n.shared ? '<span class="shared-badge">🌐 公开</span>' : ''}${n.pending ? '<span class="pending-badge">待同步</span>' : ''}</span><span class="actions"><button class="pin-btn" data-id="${id}">${n.pinned ? '取消置顶' : '置顶'}</button><button class="edit-btn" data-id="${id}">编辑</button><button class="del-btn" data-id="${id}">删除</button></span></div>
+      ${n.title ? '<div class="title">' + esc(n.title) + '</div>' : ''}
+      <div class="body ${isLong ? '' : 'short'}" data-id="${id}">${n.group ? '<span class="group-badge">' + esc(n.group) + '</span>' : ''}${bodyHTML}</div>
+      ${tags.length ? '<div class="card-tags">' + tags.map(t => '<span class="card-tag">' + esc(t) + '</span>').join('') + '</div>' : ''}
       ${imgHtml}
-      ${isLong ? '<div class="expand-hint" data-id="'+n.id+'">点击展开全文…</div>' : ''}
-      <div class="card-footer">${createdFull ? '创建于 '+createdFull : ''}${updatedFull ? ' · 更新于 '+updatedFull : ''}</div>
+      ${isLong ? '<div class="expand-hint" data-id="' + id + '">点击展开全文…</div>' : ''}
+      <div class="card-footer">${createdFull ? '创建于 ' + createdFull : ''}${updatedFull ? ' · 更新于 ' + updatedFull : ''}</div>
     </div>`;
 }

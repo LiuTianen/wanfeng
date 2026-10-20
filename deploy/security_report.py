@@ -1,8 +1,29 @@
 #!/usr/bin/env python3
-"""晚风安全巡检：累积更新黑名单 + 正常访问报告"""
-import gzip, glob, re, subprocess
+"""晚风安全巡检：累积更新黑名单 + 正常访问报告
+
+默认会写入 /etc/nginx/conf.d/block-scanners.conf 并 reload nginx；
+加 --dry-run 只打印将要变更的规则，不改配置。
+
+判定规则（宁可漏，不可误伤）：
+1) 探测敏感路径（.env/.git/wp-admin 等）= 铁证
+2) 10 分钟内 >=100 次 = 高频突发
+3) 仅 UA 可疑 —— 只进报告，不再自动封禁（历史上多次误伤真实用户）
+"""
+import argparse
+import glob
+import gzip
+import ipaddress
+import re
+import subprocess
+import sys
 from collections import defaultdict
 from datetime import datetime
+
+# 输出里带 emoji，Windows / 非 UTF-8 终端下会直接抛 UnicodeEncodeError
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError):
+    pass
 
 CONF = '/etc/nginx/conf.d/block-scanners.conf'
 EXCLUDE = {'120.77.9.218', '127.0.0.1'}  # 服务器自己、本机回环
@@ -11,6 +32,8 @@ MANUAL_BLACKLIST = {'185.12.59.118'}
 
 SENS = re.compile(r'(\.env|\.git|\.vscode|\.svn|wp-|phpmyadmin|\.htaccess|\.DS_Store|actuator|\.aws|\.ssh|/config|/admin|php://|allow_url_include|/bin/sh|/cgi-bin|sftp|\.bak|\.backup|\.sql|\.yml|\.yaml)', re.I)
 BADUA = re.compile(r'(curl|wget|python|Go-http|nikto|sqlmap|nmap|masscan|zgrab|scanner|libredtail|l9tcpid|Exposure|Rota|MSIE [678]|libwww|Java/|okhttp|crawler|spider|facebookexternalhit|BLEXBot|Ahrefs|Semrush|DotBot|PetalBot|Bytespider|bot)', re.I)
+
+SAFE_METHODS = {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}
 
 
 def load_lines():
@@ -72,7 +95,19 @@ def read_existing():
     return rules
 
 
+def is_ipv4(value):
+    try:
+        ipaddress.IPv4Address(value)
+        return True
+    except ValueError:
+        return False
+
+
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--dry-run', action='store_true', help='只打印规则变更，不写入、不 reload')
+    args = ap.parse_args()
+
     lines = load_lines()
     stats = defaultdict(lambda: {'n': 0, 'first': None, 'last': None, 't0': None, 't1': None,
                                   'ua': set(), 'sens': 0, 'badua': 0, 'real_iphone': False})
@@ -97,28 +132,27 @@ def main():
             d['sens'] += 1
         # 非标准方法（PROPFIND 等）或二进制垃圾请求（TLS 握手/端口探测字节）
         method = req.split(' ', 1)[0] if req else ''
-        if method and method not in {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}:
+        if method and method not in SAFE_METHODS:
             d['sens'] += 1
         if BADUA.search(ua):
             d['badua'] += 1
 
-    # 识别扫描器（三重规则，优先级递减）
-    # 1) 敏感路径探测 = 铁证（扫描器伪装 iPhone UA 也会扫 .env/.git 等）
-    # 2) 高频突发 = 攻击特征
-    # 3) 异常 UA 且无真实 iPhone 访问（避免测试 curl 混入用户出口 IP 造成误伤）
     new_scanners = set(MANUAL_BLACKLIST)
+    ua_only = []
     for ip, d in stats.items():
-        if ip in EXCLUDE:
+        if ip in EXCLUDE or not is_ipv4(ip):
             continue
+        # 1) 敏感路径探测 = 铁证
         if d['sens'] > 0:
             new_scanners.add(ip)
             continue
-        # 高频突发
+        # 2) 高频突发 = 攻击特征
         if d['t0'] and d['t1'] and d['n'] >= 100 and (d['t1'] - d['t0']) <= 600:
             new_scanners.add(ip)
             continue
+        # 3) 仅 UA 可疑：只报告，不封禁（避免 CGNAT 后面一整片真实用户被误杀）
         if d['badua'] > 0 and not d['real_iphone']:
-            new_scanners.add(ip)
+            ua_only.append((ip, d['n']))
 
     # 合并 /24 段
     seg_count = defaultdict(int)
@@ -134,19 +168,20 @@ def main():
     removed = existing - new_rules
     final = sorted(new_rules)
 
-    header = ['# 拦截恶意扫描器/爬虫 IP（全量重算，每次基于最新日志）',
-              '# 规则：敏感路径 / 异常UA / 高频突发；已排除服务器自身与真实 iPhone 用户', '']
-    with open(CONF, 'w') as f:
-        f.write('\n'.join(header) + '\n'.join(f'deny {r};' for r in final) + '\n')
-
-    reload_ok = True
-    t = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
-    if t.returncode != 0:
-        reload_msg = 'nginx -t 失败: ' + t.stderr[-150:]
-        reload_ok = False
+    if args.dry_run:
+        reload_msg = 'dry-run，未写入'
     else:
-        r = subprocess.run(['systemctl', 'reload', 'nginx'], capture_output=True, text=True)
-        reload_msg = 'OK' if r.returncode == 0 else 'reload 失败: ' + r.stderr[-150:]
+        header = ['# 拦截恶意扫描器/爬虫 IP（全量重算，每次基于最新日志）',
+                  '# 规则：敏感路径 / 高频突发；仅 UA 可疑的只记录不封禁', '']
+        with open(CONF, 'w') as f:
+            f.write('\n'.join(header) + '\n' + '\n'.join(f'deny {r};' for r in final) + '\n')
+
+        t = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+        if t.returncode != 0:
+            reload_msg = 'nginx -t 失败: ' + t.stderr[-150:]
+        else:
+            r = subprocess.run(['systemctl', 'reload', 'nginx'], capture_output=True, text=True)
+            reload_msg = 'OK' if r.returncode == 0 else 'reload 失败: ' + r.stderr[-150:]
 
     # 正常 IP：非扫描器、非排除、访问>=2次（去掉一次性噪音）
     normal = [(ip, d) for ip, d in stats.items()
@@ -166,6 +201,11 @@ def main():
     print(f"当前规则：{len(final)} 条")
     print(f"重载状态：{reload_msg}")
     print()
+    if ua_only:
+        print(f'━━━ ⚠️ 仅 UA 可疑（未封禁，共 {len(ua_only)} 个）━━━')
+        for ip, n in ua_only[:10]:
+            print(f"   {ip:18s} {n:4d}次  （如确认恶意，请加入 MANUAL_BLACKLIST）")
+        print()
     print(f'━━━ 👥 正常访问 IP（共 {len(normal)} 个，已过滤一次性噪音）━━━')
     for ip, d in normal[:40]:
         uas = list(d['ua'])

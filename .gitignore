@@ -1,2 +1,29 @@
+# 依赖
 node_modules/
-server/__pycache__/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# 本机数据 —— 绝不能提交
+.apikey
+*.db
+*.db-wal
+*.db-shm
+uploads/
+data/
+logs/
+
+# 测试与构建产物
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

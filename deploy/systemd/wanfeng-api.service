@@ -7,10 +7,45 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/wanfeng/server
+
+# ── 运行时环境 ──
+Environment=PYTHONUNBUFFERED=1
 Environment=WANFENG_DATA_DIR=/var/lib/wanfeng
-ExecStart=/var/www/wanfeng/server/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 app:app
+Environment=WANFENG_LOG_DIR=/var/log/wanfeng
+Environment=WANFENG_UPLOAD_DIR=/var/www/wanfeng/uploads
+# 只在需要轮换主 Key 时临时加上 WANFENG_RESET_KEY=1 并重启一次，随后务必删掉，
+# 否则每次重启都会换 Key，所有客户端都会掉线。
+# Environment=WANFENG_RESET_KEY=1
+
+# systemd 负责创建目录并 chown 给 www-data，省掉手工 mkdir
+StateDirectory=wanfeng
+StateDirectoryMode=0750
+LogsDirectory=wanfeng
+LogsDirectoryMode=0750
+
+ExecStart=/var/www/wanfeng/server/venv/bin/gunicorn \
+    --workers 2 \
+    --threads 4 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile - \
+    --bind 127.0.0.1:5000 \
+    app:app
 Restart=always
 RestartSec=3
+
+# ── 沙箱加固 ──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+ReadWritePaths=/var/lib/wanfeng /var/log/wanfeng /var/www/wanfeng/uploads
 
 [Install]
 WantedBy=multi-user.target
